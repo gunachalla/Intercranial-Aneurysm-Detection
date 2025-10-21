@@ -1,0 +1,37 @@
+services:
+  app:
+    build:
+      context: .
+      network: host
+
+    container_name: rsna2025
+    hostname: rsna2025
+
+    network_mode: "host"
+    volumes:
+      - ../:/workspace/
+      - $HOME/.ssh:/home/tomo/.ssh
+      - $HOME/.Xauthority:/root/.Xauthority
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro
+      - /mnt/wslg:/mnt/wslg
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - $HOME/kaggle/rsna2025/data:/workspace/data_original
+    working_dir: /workspace
+    shm_size: 64gb
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=$DISPLAY
+      - PULSE_SERVER=$PULSE_SERVER
+      - WAYLAND_DISPLAY=$WAYLAND_DISPLAY
+      - XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    command: tail -f /dev/null # v158: Prevent the container from exiting

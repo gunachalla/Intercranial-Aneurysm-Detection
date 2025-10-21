@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - data: rsna2024 # choose datamodule with `test_dataloader()` for evaluation
+  - model: timm_model
+  - logger: wandb
+  - trainer: default
+  - paths: default
+  - extras: default
+  - hydra: default
+  - experiment: null
+
+task_name: "eval"
+
+tags: ["dev"]
+
+# passing checkpoint path is necessary for evaluation
+ckpt_path: ???
+
+experiment_name: "default"
+log_dir: ${paths.log_dir}/${task_name}/runs/${experiment_name}

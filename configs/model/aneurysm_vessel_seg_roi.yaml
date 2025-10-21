@@ -1,0 +1,44 @@
+_target_: src.models.aneurysm_vessel_seg_roi_module.AneurysmVesselSegROILitModule
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  lr: 0.001
+  weight_decay: 1e-3
+
+optimize_config:
+  mode: normal
+
+scheduler:
+  _target_: src.models.schedulers.warmup_cosine_annealing.CosineAnnealingLR
+  _partial_: true
+  warmup_epochs: 5
+  max_epochs: ${trainer.max_epochs}
+  warmup_start_lr: 1e-5
+  eta_min: 1e-5
+
+net:
+  _target_: src.models.components.anet_roi_net.AneurysmRoiBackboneResNet3D
+  # encoder_pretrained_path: /workspace/logs/resnet3d_pretrain/r3d18_KM_200ep.pth
+  # decoder_feat_channels: [256, 192, 128, 64]
+  # decoder_norm: in
+  # decoder_act: relu
+  # upsample_mode: nontrainable
+  # sphere_mid_channels: 32
+  # num_mask_classes: 13
+  # mask_embed_channels: 64
+
+cls_hidden: 256
+cls_dropout: 0.1
+mask_pool_modes_loc: mean
+mask_pool_modes_ap: mean
+global_pool_modes_loc: mean
+global_pool_modes_ap: mean
+
+w_loc: 1.0
+w_ap: 1.0
+w_sphere: 1.0
+
+num_location_classes: 13
+sphere_radius: 5
+compile: true

@@ -1,0 +1,43 @@
+{
+    // IntelliSense を使用して利用可能な属性を学べます。
+    // 既存の属性の説明をホバーして表示します。
+    // 詳細情報は次を確認してください: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python デバッガー: 現在のファイル",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "experiment=250927-seg_tf-nnunet_pixshuV2-mask_mean-s96_192-z_xy-lr1e-4_1e-5-bs1_8-e20-ema995-transV2",
+                "logger=csv",
+                "model.compile=false",
+                // "data.num_workers=0",
+                // "data.persistent_workers=False",
+                // // "data.debug=true",
+                // "ckpt_path=/workspace/logs/train/runs/250819-aneurysm_multitask-resnet3d18_v2-w1_1_0-ftp-lr1e-3_decay01-bs2_8-ep10/checkpoints/fold0/last.ckpt",
+                // "data.fold=0"
+                // "--pred_bbox_dir",
+                // "/workspace/logs/train/runs/250810-brain_simcc-lps_1400-segresnet-s2r1t01-lr1e-3_decay01-bs8-ep30/pred_bboxes",
+                // "--sphere_radius_mm",
+                // "3.0"
+                // "--dicom-root",
+                // "/workspace/data/series/1.2.826.0.1.3680043.8.498.17677548211553545296698864792051352427",
+                // "--out-root",
+                // "/workspace/tmp",
+                // "--num-workers",
+                // "1"
+                // "--result-dir",
+                // "/workspace/logs/nnUNet_results/Dataset001_VesselSegmentation/RSNA2025Trainer_moreDAv2__nnUNetResEncUNetMPlans__3d_fullres"
+                // "--multiframe-only"
+                // "/workspace/data/series/1.2.826.0.1.3680043.8.498.10004044428023505108375152878107656647",
+                // "--debug"
+            ],
+            "env": {
+                "PYDEVD_WARN_SLOW_RESOLVE_TIMEOUT": "2"
+            }
+        }
+    ]
+}

@@ -1,0 +1,27 @@
+_target_: src.data.rsna_aneurysm_vessel_seg_datamodule.RSNAAneurysmVesselSegDataModule
+
+vessel_pred_dir: ${paths.data_dir}/nnUNet_inference/predictions_v4
+train_csv: ${paths.data_dir}/train.csv
+
+batch_size: 1
+num_workers: 12
+pin_memory: True
+persistent_workers: True
+prefetch_factor: 4
+
+# Cross-validation settings
+n_folds: 5
+fold: 0
+split_seed: 42
+split_file: null
+
+# Dataset/cache settings
+cache_data: False
+input_size: [96, 192, 192]
+keep_ratio: z-xy
+spatial_transform: resize
+pad_multiple: 32
+
+# Metadata settings
+metadata_root: ${paths.data_dir}/series_niix
+include_metadata: true

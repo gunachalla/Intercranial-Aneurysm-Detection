@@ -252,7 +252,7 @@ class nnUNetPlannerResEncMForcedLowres(nnUNetPlannerResEncM):
                  suppress_transpose: bool = False):
         super().__init__(dataset_name_or_id, gpu_memory_target_in_gb, preprocessor_name, plans_name,
                          overwrite_target_spacing, suppress_transpose)
-        # 低解像度プランを確実に作成するため閾値を緩める
+        # Relax threshold to ensure low-resolution plan creation
         self.lowres_creation_threshold = 0.32
 
 

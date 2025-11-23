@@ -22,7 +22,7 @@ from batchgeneratorsv2.transforms.utils.deep_supervision_downsampling import Dow
 
 
 class SimulateThickSliceTransform(BasicTransform):
-    """疑似的にスライス厚を増やすために一方向にダウンサンプリングしてから元解像度に戻すTransform"""
+    """Transform that simulates increased slice thickness by downsampling in one direction and then restoring to original resolution"""
 
     def __init__(
         self,
@@ -35,7 +35,7 @@ class SimulateThickSliceTransform(BasicTransform):
 
     @staticmethod
     def _resize_tensor(tensor: torch.Tensor, target_size: Tuple[int, ...]) -> torch.Tensor:
-        # 常にfloatへ変換して補間し、必要なら元dtypeに戻す
+        # Always convert to float for interpolation, and cast back to original dtype if necessary
         original_dtype = tensor.dtype
         needs_cast = not tensor.is_floating_point()
         work_tensor = tensor.float() if needs_cast else tensor
@@ -122,7 +122,7 @@ class SimulateThickSliceTransform(BasicTransform):
 
 
 class RSNA2025Trainer_moreDAv6(RSNA2025Trainer_moreDAv3):
-    """v6: v3系に疑似スライス厚拡張を追加したTrainer"""
+    """v6: Trainer adding simulated slice thickness augmentation to v3 series"""
 
     def get_training_transforms(
         self,
@@ -170,7 +170,7 @@ class RSNA2025Trainer_moreDAv6(RSNA2025Trainer_moreDAv3):
 
 
 class RSNA2025Trainer_moreDAv6_SkeletonRecall(nnUNetTrainerSkeletonRecall_more_DAv3):
-    """SkeletonRecallロスを組み込んだv6トレーナー"""
+    """v6 trainer incorporating SkeletonRecall loss"""
 
     def get_training_transforms(
         self,
@@ -217,9 +217,9 @@ class RSNA2025Trainer_moreDAv6_SkeletonRecall(nnUNetTrainerSkeletonRecall_more_D
         return base_transforms
 
 
-# v6.1: v6系に疑似スライス厚拡張を0.3~0.6にしたTrainer
+# v6.1: Trainer with simulated slice thickness augmentation set to 0.3~0.6 on v6 series
 class RSNA2025Trainer_moreDAv6_1_SkeletonRecall(nnUNetTrainerSkeletonRecall_more_DAv3):
-    """SkeletonRecallロスを組み込んだv6トレーナー"""
+    """v6 trainer incorporating SkeletonRecall loss"""
 
     def get_training_transforms(
         self,
@@ -267,10 +267,10 @@ class RSNA2025Trainer_moreDAv6_1_SkeletonRecall(nnUNetTrainerSkeletonRecall_more
 
 
 class RSNA2025Trainer_moreDAv6_SkeletonRecallTverskyBeta07(RSNA2025Trainer_moreDAv6_SkeletonRecall):
-    """Diceの代わりにTversky Loss (β=0.7) を用いるSkeletonRecallトレーナー"""
+    """SkeletonRecall trainer using Tversky Loss (beta=0.7) instead of Dice"""
 
     def _build_loss(self):
-        """Tversky Lossを用いたSkeletonRecall向け複合損失を構築"""
+        """Construct composite loss for SkeletonRecall using Tversky Loss"""
         if self.label_manager.ignore_label is not None:
             warnings.warn(
                 "Support for ignore label with Skeleton Recall is experimental and may not work as expected"
@@ -310,10 +310,10 @@ class RSNA2025Trainer_moreDAv6_SkeletonRecallTverskyBeta07(RSNA2025Trainer_moreD
 
 
 class RSNA2025Trainer_moreDAv6_1_SkeletonRecallTverskyBeta07(RSNA2025Trainer_moreDAv6_1_SkeletonRecall):
-    """Diceの代わりにTversky Loss (β=0.7) を用いるSkeletonRecallトレーナー"""
+    """SkeletonRecall trainer using Tversky Loss (beta=0.7) instead of Dice"""
 
     def _build_loss(self):
-        """Tversky Lossを用いたSkeletonRecall向け複合損失を構築"""
+        """Construct composite loss for SkeletonRecall using Tversky Loss"""
         if self.label_manager.ignore_label is not None:
             warnings.warn(
                 "Support for ignore label with Skeleton Recall is experimental and may not work as expected"

@@ -136,7 +136,7 @@ class NapariNiftiVisualizer:
 
     def _load_annotations_json(self, nifti_path: Path) -> List[Dict]:
         """Load per-file annotations JSON next to NIfTI file."""
-        # .nii.gz の場合と .nii の場合で適切にJSONファイル名を構築
+        # Construct JSON filename appropriately for .nii.gz and .nii
         if nifti_path.suffix == ".gz":
             json_path = nifti_path.with_suffix(".annotations.json")
         else:
@@ -199,11 +199,11 @@ class NapariNiftiVisualizer:
         return None
 
     def _setup_keyboard_bindings(self):
-        """キーボードイベントをセットアップ"""
+        """Setup keyboard events"""
 
         @self.viewer.bind_key("n")
         def next_case(viewer):
-            """次のケースに移動 (n key)"""
+            """Move to next case (n key)"""
             if len(self.nifti_list) == 0:
                 print("No NIfTI files available")
                 return
@@ -219,7 +219,7 @@ class NapariNiftiVisualizer:
 
         @self.viewer.bind_key("p")
         def previous_case(viewer):
-            """前のケースに移動 (p key)"""
+            """Move to previous case (p key)"""
             if len(self.nifti_list) == 0:
                 print("No NIfTI files available")
                 return
@@ -235,23 +235,23 @@ class NapariNiftiVisualizer:
 
         @self.viewer.bind_key("c")
         def reset_camera(viewer):
-            """カメラをリセット (c key)"""
+            """Reset camera (c key)"""
             print("Camera reset")
             viewer.reset_view()
 
         @self.viewer.bind_key("m")
         def toggle_annotations(viewer):
-            """アノテーション関連レイヤーの表示切り替え (m key)"""
+            """Toggle annotation related layers display (m key)"""
             self._toggle_annotation_layers()
 
         @self.viewer.bind_key("k")
         def next_annotation(viewer):
-            """次のアノテーション位置に移動 (k key)"""
+            """Move to next annotation position (k key)"""
             self._navigate_to_next_annotation()
 
         @self.viewer.bind_key("j")
         def previous_annotation(viewer):
-            """前のアノテーション位置に移動 (j key)"""
+            """Move to previous annotation position (j key)"""
             self._navigate_to_previous_annotation()
 
         print("Keyboard bindings set up:")
@@ -263,10 +263,10 @@ class NapariNiftiVisualizer:
         print("  'j' - Previous annotation")
 
     def _toggle_annotation_layers(self):
-        """アノテーション関連レイヤーの表示・非表示を切り替え"""
+        """Toggle visibility of annotation related layers"""
         annotation_layer_names = ["Annotation Points", "Vessel Segmentation"]
 
-        # 現在の表示状態を確認
+        # Check current display state
         visible_count = 0
         total_count = 0
 
@@ -277,11 +277,11 @@ class NapariNiftiVisualizer:
                 if layer.visible:
                     visible_count += 1
 
-        # 切り替えロジック
+        # Toggle logic
         new_state = visible_count < total_count
-        action = "表示" if new_state else "非表示"
+        action = "Show" if new_state else "Hide"
 
-        # 各レイヤーの表示状態を変更
+        # Change visibility of each layer
         for layer_name in annotation_layer_names:
             layer = self._get_layer_by_name(layer_name)
             if layer is not None:
@@ -290,25 +290,25 @@ class NapariNiftiVisualizer:
         print(f"Annotation-related layers: {action}")
 
     def _navigate_to_next_annotation(self):
-        """次のアノテーション位置に移動"""
+        """Move to next annotation position"""
         if not self.current_annotations:
-            print("⚠ アノテーション点がありません")
+            print("⚠ No annotation points")
             return
 
         self.current_annotation_index = (self.current_annotation_index + 1) % len(self.current_annotations)
-        self._move_to_current_annotation("次")
+        self._move_to_current_annotation("Next")
 
     def _navigate_to_previous_annotation(self):
-        """前のアノテーション位置に移動"""
+        """Move to previous annotation position"""
         if not self.current_annotations:
-            print("⚠ アノテーション点がありません")
+            print("⚠ No annotation points")
             return
 
         self.current_annotation_index = (self.current_annotation_index - 1) % len(self.current_annotations)
-        self._move_to_current_annotation("前")
+        self._move_to_current_annotation("Prev")
 
     def _move_to_current_annotation(self, direction: str = ""):
-        """現在のアノテーションインデックスに対応するスライスに移動"""
+        """Move to slice corresponding to current annotation index"""
         if not self.current_annotations or not self.viewer:
             return
 
@@ -352,7 +352,7 @@ class NapariNiftiVisualizer:
         return None
 
     def _update_or_create_layer(self, layer_name: str, data=None, layer_type="image", **kwargs):
-        """レイヤーが存在する場合はデータを更新、存在しない場合は新規作成
+        """Update data if layer exists, otherwise create new
 
         Args:
             layer_name: Layer name
@@ -404,22 +404,22 @@ class NapariNiftiVisualizer:
     def _load_and_display_case(self, nifti_path: Path):
         """Load and display the specified NIfTI file."""
         try:
-            # NIfTIファイルを読み込む
+            # Load NIfTI file
             nii_img = nib.load(str(nifti_path))
             volume_xyz = nii_img.get_fdata()  # shape: (X, Y, Z)
             zooms_xyz = nii_img.header.get_zooms()[:3]  # (dx, dy, dz)
 
-            # napari は (Z, Y, X) を想定するので並べ替え
+            # Transpose as napari expects (Z, Y, X)
             volume_zyx = np.transpose(volume_xyz, (2, 1, 0))  # (Z, Y, X)
             voxel_spacing_zyx = (zooms_xyz[2], zooms_xyz[1], zooms_xyz[0])  # (dz, dy, dx)
 
-            # JSONからModalityを読み取り
+            # Read Modality from JSON
             modality = self._load_modality_from_json(nifti_path)
 
-            # ボリュームを正規化（Modalityを考慮）
+            # Normalize volume (considering Modality)
             volume_normalized = self._normalize_volume(volume_zyx, modality)
 
-            # ボリュームレイヤーを更新または作成
+            # Update or create volume layer
             self._update_or_create_layer(
                 "NIfTI Volume",
                 volume_normalized,
@@ -431,21 +431,21 @@ class NapariNiftiVisualizer:
 
             print(f"✓ NIfTI Volume: {volume_zyx.shape}, Spacing: {voxel_spacing_zyx}")
 
-            # SeriesInstanceUIDを取得
+            # Get SeriesInstanceUID
             series_uid = self._get_series_uid_from_path(nifti_path)
 
-            # SeriesInstanceUIDを表示
+            # Display SeriesInstanceUID
             if series_uid:
                 print(f"📋 SeriesInstanceUID: {series_uid}")
             else:
                 print("⚠ Failed to determine SeriesInstanceUID")
 
-            # 血管セグメンテーションを読み込み
+            # Load vessel segmentation
             vessel_seg_data = None
             if series_uid:
                 vessel_seg = self._load_vessel_segmentation(series_uid)
                 if vessel_seg is not None:
-                    # セグメンテーションのリサンプリングが必要な場合の処理
+                    # Handle segmentation resampling if needed
                     if vessel_seg.shape != volume_xyz.shape:
                         print(f"⚠ Segmentation shape mismatch: {vessel_seg.shape} != {volume_xyz.shape}")
                     else:
@@ -453,16 +453,16 @@ class NapariNiftiVisualizer:
                         unique_labels = np.unique(vessel_seg)
                         print(f"✓ Vessel segmentation: {vessel_seg.shape}, labels: {unique_labels}")
 
-            # 血管セグメンテーションレイヤーを更新または作成（データがなければ非表示）
+            # Update or create vessel segmentation layer (hide if no data)
             self._update_or_create_layer(
-                "血管セグメンテーション",
+                "Vessel Segmentation",
                 vessel_seg_data,
                 layer_type="labels",
                 opacity=0.6,
                 scale=voxel_spacing_zyx,
             )
 
-            # アノテーションを読み込み
+            # Load annotations
             annotations = self._load_annotations_json(nifti_path)
             self.current_annotations = annotations
             self.current_annotation_index = 0
@@ -471,7 +471,7 @@ class NapariNiftiVisualizer:
             properties = None
 
             if annotations:
-                # アノテーション点を抽出
+                # Extract annotation points
                 points = []
                 properties = {"location": [], "sop_uid": []}
 
@@ -484,28 +484,28 @@ class NapariNiftiVisualizer:
 
                 if points:
                     points_data = np.array(points)
-                    print(f"✓ アノテーション点: {len(points)}個")
+                    print(f"✓ Annotation points: {len(points)}")
 
-                    # アノテーションをZ座標でソート
+                    # Sort annotations by Z coordinate
                     self.current_annotations = sorted(
                         annotations, key=lambda x: x.get("nifti_z", float("inf"))
                     )
 
-                    print("アノテーション一覧:")
+                    print("Annotation list:")
                     for i, ann in enumerate(self.current_annotations):
                         location = ann.get("location", "Unknown")
                         z_slice = ann.get("nifti_z", 0)
-                        print(f"  {i+1}. {location}: スライス {z_slice:.1f}")
+                        print(f"  {i+1}. {location}: Slice {z_slice:.1f}")
 
-            # アノテーションレイヤーを更新または作成（データがなければ非表示）
+            # Update or create annotation layer (hide if no data)
             text_parameters = None
             if properties:
                 text_parameters = {
                     "string": "location",
-                    "anchor": "upper_left",  # 文字のアンカー位置
-                    "translation": [0, 0, -20],  # 点からのオフセット (z, y, x) - 3次元対応
-                    "size": 10,  # 文字サイズ
-                    "color": "yellow",  # 文字色
+                    "anchor": "upper_left",  # Text anchor position
+                    "translation": [0, 0, -20],  # Offset from point (z, y, x) - 3D support
+                    "size": 10,  # Text size
+                    "color": "yellow",  # Text color
                 }
 
             self._update_or_create_layer(
@@ -519,14 +519,14 @@ class NapariNiftiVisualizer:
                 scale=voxel_spacing_zyx,
             )
 
-            # ビューワーのタイトルを更新
+            # Update viewer title
             title = f"NIfTI Viewer - Case {self.current_index + 1}/{len(self.nifti_list)} - {nifti_path.name}"
             self.viewer.title = title
 
-            # カメラをリセット
+            # Reset camera
             self.viewer.reset_view()
 
-            # 最初のアノテーション位置に移動
+            # Move to first annotation position
             if self.current_annotations:
                 self.current_annotation_index = 0
                 self._move_to_current_annotation("Initial")
@@ -545,24 +545,24 @@ class NapariNiftiVisualizer:
             print(f"Error loading case {nifti_path}: {e}")
 
     def _normalize_volume(self, volume: np.ndarray, modality: Optional[str] = None) -> np.ndarray:
-        """ボリュームデータを正規化（Modalityに応じた処理）"""
+        """Normalize volume data (Process according to Modality)"""
         volume_float = volume.astype(np.float32)
 
         # if modality == "CT":
-        #     # CTの場合：ウィンドウ正規化 (center=50, width=350)
+        #     # For CT: Window normalization (center=50, width=350)
         #     # window center = 50 HU, window width = 350 HU
         #     # window_min = center - width/2 = 50 - 175 = -125 HU
         #     # window_max = center + width/2 = 50 + 175 = 225 HU
         #     window_min = 50 - 350 / 2  # -125
         #     window_max = 50 + 350 / 2  # 225
-
-        #     print(f"✓ CT ウィンドウ正規化適用: center={50}, width={350} (範囲: {window_min} - {window_max})")
-
-        #     # ウィンドウ範囲でクリップして正規化
+        #
+        #     print(f"✓ CT Window normalization applied: center={50}, width={350} (Range: {window_min} - {window_max})")
+        #
+        #     # Clip and normalize within window range
         #     volume_normalized = np.clip(volume_float, window_min, window_max)
         #     volume_normalized = (volume_normalized - window_min) / (window_max - window_min)
         # else:
-        # 他のModality（MR等）：パーセンタイルベースの正規化
+        # Other Modality (MR etc.): Percentile-based normalization
         p1 = np.percentile(volume_float, 1)
         p99 = np.percentile(volume_float, 99)
 
@@ -570,7 +570,7 @@ class NapariNiftiVisualizer:
             volume_normalized = np.clip(volume_float, p1, p99)
             volume_normalized = (volume_normalized - p1) / (p99 - p1)
         else:
-            # フォールバック：最小値と最大値で正規化
+            # Fallback: Normalize with min and max
             if volume_float.max() > volume_float.min():
                 volume_normalized = (volume_float - volume_float.min()) / (
                     volume_float.max() - volume_float.min()
@@ -581,21 +581,21 @@ class NapariNiftiVisualizer:
         return volume_normalized
 
     def visualize(self, start_index: int = 0, series_uid: Optional[str] = None) -> napari.Viewer:
-    """
-    Launch the napari viewer.
+        """
+        Launch the napari viewer.
 
-    Args:
-        start_index: Starting index
-        series_uid: Specific SeriesInstanceUID to start
+        Args:
+            start_index: Starting index
+            series_uid: Specific SeriesInstanceUID to start
 
-    Returns:
-        napari.Viewer
-    """
+        Returns:
+            napari.Viewer
+        """
         if len(self.nifti_list) == 0:
             print("No NIfTI files found")
             return None
 
-        # 特定のUIDが指定された場合、そのインデックスを探す
+        # If specific UID is specified, find its index
         if series_uid:
             uid_found = False
             for i, nifti_path in enumerate(self.nifti_list):
@@ -609,7 +609,7 @@ class NapariNiftiVisualizer:
             if not uid_found:
                 print(f"⚠ Specified UID '{series_uid}' not found")
                 print("Available UIDs:")
-                for i, nifti_path in enumerate(self.nifti_list[:10]):  # 最初の10個を表示
+                for i, nifti_path in enumerate(self.nifti_list[:10]):  # Show first 10
                     path_uid = self._get_series_uid_from_path(nifti_path)
                     if path_uid:
                         print(f"  {i + 1}. {path_uid}")
@@ -617,28 +617,28 @@ class NapariNiftiVisualizer:
                     print(f"  ... and {len(self.nifti_list) - 10} more")
                 print("Starting at default index")
 
-        # 開始インデックスを調整
+        # Adjust start index
         start_index = max(0, min(start_index, len(self.nifti_list) - 1))
         self.current_index = start_index
 
-        # 最初のファイル
+        # First file
         first_file = self.nifti_list[start_index]
         print(f"Starting with file {start_index + 1}/{len(self.nifti_list)}: {first_file.name}")
 
-        # napariビューワーを作成
+        # Create napari viewer
         self.viewer = napari.Viewer(title=f"NIfTI Viewer - {first_file.name}")
 
-        # キーボードバインディングをセットアップ
+        # Setup keyboard bindings
         self._setup_keyboard_bindings()
 
-        # 最初のケースを表示
+        # Display first case
         self._load_and_display_case(first_file)
 
         return self.viewer
 
 
 def main():
-    """メイン関数"""
+    """Main function"""
     import argparse
 
     parser = argparse.ArgumentParser(description="Napari NIfTI Visualizer")

@@ -1,9 +1,9 @@
 """
-Tversky Loss実装を含むRSNA2025用のトレーナー
+Trainer for RSNA2025 including Tversky Loss implementation
 
-Tversky Lossは、偽陽性と偽陰性に異なる重み付けを可能にするDice Lossの一般化版です。
-alpha, betaパラメータでFPとFNのバランスを調整できます。
-alpha=beta=0.5の場合、Dice Lossと等価になります。
+Tversky Loss is a generalized version of Dice Loss that allows different weighting for false positives and false negatives.
+You can adjust the balance between FP and FN with alpha and beta parameters.
+If alpha=beta=0.5, it becomes equivalent to Dice Loss.
 """
 
 from typing import Callable
@@ -23,18 +23,18 @@ from nnunetv2.utilities.helpers import softmax_helper_dim1
 
 class MemoryEfficientTverskyLoss(nn.Module):
     """
-    Tversky Loss実装
+    Tversky Loss implementation
 
     Tversky Index = TP / (TP + alpha*FP + beta*FN)
 
     Parameters:
-        alpha: 偽陽性の重み (デフォルト: 0.3)
-        beta: 偽陰性の重み (デフォルト: 0.7)
-        smooth: ゼロ除算を避けるための平滑化項
-        apply_nonlin: 活性化関数 (softmaxまたはsigmoid)
-        batch_dice: バッチ単位での計算フラグ
-        do_bg: 背景クラスを含むかどうか
-        ddp: 分散学習対応フラグ
+        alpha: Weight for false positives (default: 0.3)
+        beta: Weight for false negatives (default: 0.7)
+        smooth: Smoothing term to avoid division by zero
+        apply_nonlin: Activation function (softmax or sigmoid)
+        batch_dice: Flag for batch-wise calculation
+        do_bg: Whether to include background class
+        ddp: Flag for distributed data parallel support
     """
 
     def __init__(
@@ -57,10 +57,10 @@ class MemoryEfficientTverskyLoss(nn.Module):
         self.smooth = smooth
         self.ddp = ddp
 
-        # alphaとbetaの和が1になることを推奨（必須ではない）
+        # It is recommended (but not mandatory) that alpha and beta sum to 1
         if abs(self.alpha + self.beta - 1.0) > 0.01:
             warnings.warn(
-                f"alpha ({alpha}) + beta ({beta}) = {alpha + beta} != 1.0. 通常、alpha + beta = 1.0に設定することが推奨されます",
+                f"alpha ({alpha}) + beta ({beta}) = {alpha + beta} != 1.0. Usually, it is recommended to set alpha + beta = 1.0",
                 UserWarning,
             )
 
@@ -68,7 +68,7 @@ class MemoryEfficientTverskyLoss(nn.Module):
         if self.apply_nonlin is not None:
             x = self.apply_nonlin(x)
 
-        # 次元を(b, c)の形状に変換
+        # Convert dimensions to (b, c) shape
         axes = tuple(range(2, x.ndim))
 
         with torch.no_grad():
@@ -76,7 +76,7 @@ class MemoryEfficientTverskyLoss(nn.Module):
                 y = y.view((y.shape[0], 1, *y.shape[1:]))
 
             if x.shape == y.shape:
-                # GTがすでにone-hotエンコーディングの場合
+                # If GT is already one-hot encoded
                 y_onehot = y
             else:
                 y_onehot = torch.zeros(x.shape, device=x.device, dtype=torch.bool)
@@ -88,38 +88,38 @@ class MemoryEfficientTverskyLoss(nn.Module):
             # True Positive + False Negative (GT)
             sum_gt = y_onehot.sum(axes) if loss_mask is None else (y_onehot * loss_mask).sum(axes)
 
-        # 背景を除外する場合
+        # If excluding background
         if not self.do_bg:
             x = x[:, 1:]
 
         # True Positive
         if loss_mask is None:
             tp = (x * y_onehot).sum(axes)
-            # False Positive + True Positive (予測)
+            # False Positive + True Positive (Prediction)
             sum_pred = x.sum(axes)
         else:
             tp = (x * y_onehot * loss_mask).sum(axes)
             sum_pred = (x * loss_mask).sum(axes)
 
-        # False Positive = 予測 - TP
+        # False Positive = Prediction - TP
         fp = sum_pred - tp
         # False Negative = GT - TP
         fn = sum_gt - tp
 
         if self.ddp and self.batch_dice:
-            # 分散学習時の集約
+            # Aggregation during distributed training
             tp = AllGatherGrad.apply(tp).sum(0)
             fp = AllGatherGrad.apply(fp).sum(0)
             fn = AllGatherGrad.apply(fn).sum(0)
 
-        # Tversky Index計算
+        # Calculate Tversky Index
         if self.batch_dice:
-            # バッチ方向で合計してからクラス平均（nnUNetのDiceと同一の集約）
+            # Sum over batch then class average (same aggregation as nnUNet Dice)
             if self.ddp:
                 tp = AllGatherGrad.apply(tp).sum(0)
                 fp = AllGatherGrad.apply(fp).sum(0)
                 fn = AllGatherGrad.apply(fn).sum(0)
-            # 依然としてバッチ次元が残るので合計
+            # Sum again as batch dimension still remains
             tp = tp.sum(0)
             fp = fp.sum(0)
             fn = fn.sum(0)
@@ -129,18 +129,18 @@ class MemoryEfficientTverskyLoss(nn.Module):
             )
             tversky = tversky_per_class.mean()
         else:
-            # サンプルごと・クラスごとのTverskyを平均
+            # Average Tversky per sample and per class
             nominator = tp + self.smooth
             denominator = tp + self.alpha * fp + self.beta * fn + self.smooth
             tversky = (nominator / torch.clip(denominator, min=1e-8)).mean()
 
-        # 損失として返すため負値に
+        # Return as negative value for loss
         return -tversky
 
 
 class TverskyPlusCELoss(nn.Module):
     """
-    Tversky LossとCross Entropy Lossの組み合わせ
+    Combination of Tversky Loss and Cross Entropy Loss
     """
 
     def __init__(self, tversky_kwargs, ce_kwargs, weight_tversky=1, weight_ce=1, ignore_label=None):
@@ -177,19 +177,19 @@ class TverskyPlusCELoss(nn.Module):
 
 class RSNA2025Trainer_moreDAv3_TverskyLoss(RSNA2025Trainer_moreDAv3):
     """
-    Tversky Lossを使用するRSNA2025トレーナー
+    RSNA2025 trainer using Tversky Loss
 
-    alphaとbetaパラメータで偽陽性と偽陰性の重みを調整できます。
-    デフォルトでは偽陰性（見逃し）により大きなペナルティを課します。
+    You can adjust weights for false positives and false negatives with alpha and beta parameters.
+    By default, it imposes a larger penalty on false negatives (misses).
     """
 
     def _build_loss(self):
-        """Tversky Lossを構築"""
+        """Build Tversky Loss"""
         tversky_alpha = 0.3
         tversky_beta = 0.7
 
         if self.label_manager.has_regions:
-            # マルチラベル（領域）の場合はsigmoid活性化
+            # Sigmoid activation for multi-label (regions)
             loss = MemoryEfficientTverskyLoss(
                 alpha=tversky_alpha,
                 beta=tversky_beta,
@@ -200,7 +200,7 @@ class RSNA2025Trainer_moreDAv3_TverskyLoss(RSNA2025Trainer_moreDAv3):
                 ddp=self.is_ddp,
             )
         else:
-            # マルチクラスの場合はsoftmax活性化
+            # Softmax activation for multi-class
             loss = MemoryEfficientTverskyLoss(
                 alpha=tversky_alpha,
                 beta=tversky_beta,
@@ -211,23 +211,23 @@ class RSNA2025Trainer_moreDAv3_TverskyLoss(RSNA2025Trainer_moreDAv3):
                 ddp=self.is_ddp,
             )
 
-        # Deep Supervisionの設定
+        # Deep Supervision settings
         if self.enable_deep_supervision:
             deep_supervision_scales = self._get_deep_supervision_scales()
 
-            # 解像度が低くなるにつれて指数的に重みを減少させる
+            # Exponentially decrease weights as resolution decreases
             weights = np.array([1 / (2**i) for i in range(len(deep_supervision_scales))])
 
             if self.is_ddp and not self._do_i_compile():
-                # DDPの特殊なケース
+                # Special case for DDP
                 weights[-1] = 1e-6
             else:
                 weights[-1] = 0
 
-            # 重みを正規化
+            # Normalize weights
             weights = weights / weights.sum()
 
-            # Deep Supervisionラッパーで包む
+            # Wrap with Deep Supervision wrapper
             loss = DeepSupervisionWrapper(loss, weights)
 
         return loss
@@ -235,22 +235,22 @@ class RSNA2025Trainer_moreDAv3_TverskyLoss(RSNA2025Trainer_moreDAv3):
 
 class RSNA2025Trainer_moreDAv3_TverskyPlusCE(RSNA2025Trainer_moreDAv3):
     """
-    Tversky LossとCross Entropy Lossを組み合わせたトレーナー
+    Trainer combining Tversky Loss and Cross Entropy Loss
     """
 
     def _build_loss(self):
-        """Tversky + CE複合損失を構築"""
-        # このトレーナーはmulti-class専用（regionsではBCEを用いるべき）
+        """Build composite Tversky + CE loss"""
+        # This trainer is for multi-class only (use BCE for regions)
         assert (
             not self.label_manager.has_regions
-        ), "RSNA2025Trainer_moreDAv3_TverskyPlusCEはmulti-class専用です (regionsではBCEをご利用ください)"
+        ), "RSNA2025Trainer_moreDAv3_TverskyPlusCE is for multi-class only (please use BCE for regions)"
 
         tversky_kwargs = {
             "alpha": 0.3,
             "beta": 0.7,
             "batch_dice": self.configuration_manager.batch_dice,
             "smooth": 1e-5,
-            "do_bg": False,  # multi-classでは背景を除外
+            "do_bg": False,  # Exclude background in multi-class
             "ddp": self.is_ddp,
             "apply_nonlin": softmax_helper_dim1,
         }
@@ -284,22 +284,22 @@ class RSNA2025Trainer_moreDAv3_TverskyPlusCE(RSNA2025Trainer_moreDAv3):
 
 class RSNA2025Trainer_moreDAv5_TverskyPlusCE(RSNA2025Trainer_moreDAv5):
     """
-    Tversky LossとCross Entropy Lossを組み合わせたトレーナー
+    Trainer combining Tversky Loss and Cross Entropy Loss
     """
 
     def _build_loss(self):
-        """Tversky + CE複合損失を構築"""
-        # このトレーナーはmulti-class専用（regionsではBCEを用いるべき）
+        """Build composite Tversky + CE loss"""
+        # This trainer is for multi-class only (use BCE for regions)
         assert (
             not self.label_manager.has_regions
-        ), "RSNA2025Trainer_moreDAv5_TverskyPlusCEはmulti-class専用です (regionsではBCEをご利用ください)"
+        ), "RSNA2025Trainer_moreDAv5_TverskyPlusCE is for multi-class only (please use BCE for regions)"
 
         tversky_kwargs = {
             "alpha": 0.3,
             "beta": 0.7,
             "batch_dice": self.configuration_manager.batch_dice,
             "smooth": 1e-5,
-            "do_bg": False,  # multi-classでは背景を除外
+            "do_bg": False,  # Exclude background in multi-class
             "ddp": self.is_ddp,
             "apply_nonlin": softmax_helper_dim1,
         }

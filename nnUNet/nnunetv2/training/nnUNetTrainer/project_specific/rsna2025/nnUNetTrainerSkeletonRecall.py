@@ -555,4 +555,4 @@ from nnunetv2.training.nnUNetTrainer.variants.data_augmentation.nnUNetTrainerNoM
 
 
 class nnUNetTrainerSkeletonRecall_NoMirror(nnUNetTrainerNoMirroring, nnUNetTrainerSkeletonRecall):
-    """`nnUNetTrainerSkeletonRecall` のミラーリング無効版"""
+    """No mirroring version of `nnUNetTrainerSkeletonRecall`"""

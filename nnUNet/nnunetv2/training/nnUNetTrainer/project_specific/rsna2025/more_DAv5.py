@@ -165,7 +165,7 @@ class RSNA2025Trainer_moreDAv5(nnUNetTrainer_onlyMirror01):
             patch_size_spatial = patch_size
             ignore_axes = None
 
-        # どれかの軸だけ大きくダウンサンプリング
+        # Significantly downsample only one of the axes
         transforms.append(
             OneOfTransform(
                 [
@@ -202,7 +202,7 @@ class RSNA2025Trainer_moreDAv5(nnUNetTrainer_onlyMirror01):
                 ]
             )
         )
-        # どれかの軸だけ大きくダウンサンプリング
+        # Significantly downsample only one of the axes
         transforms.append(
             OneOfTransform(
                 [
@@ -400,7 +400,7 @@ class RSNA2025Trainer_moreDAv5(nnUNetTrainer_onlyMirror01):
         )
 
         # ------------------------------------------------------------
-        # 以下、デフォルトのデータ拡張にもある項目
+        # Below are items also present in default data augmentation
         # ------------------------------------------------------------
         if use_mask_for_norm is not None and any(use_mask_for_norm):
             transforms.append(
@@ -448,7 +448,7 @@ class RSNA2025Trainer_moreDAv5(nnUNetTrainer_onlyMirror01):
                 )
             )
 
-        # ここでマスクをヒートマッヒートマップに変換している？
+        # Converting mask to heatmap here?
         # transforms.append(
         #     ConvertSegToRegrTarget(
         #         "EDT", gaussian_sigma=self.min_motor_distance // 3, edt_radius=self.min_motor_distance

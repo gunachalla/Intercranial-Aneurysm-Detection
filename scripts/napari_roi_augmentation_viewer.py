@@ -357,7 +357,7 @@ class AugmentationNapariApp:
         return bundle_gpu
 
     def _to_bundle(self, sample: Dict[str, object], variant: str) -> SampleBundle:
-        """Datasetの出力辞書を可視化用に変換する。"""
+        """Convert Dataset output dictionary for visualization."""
         image_tensor = torch.as_tensor(sample["image"]).detach()
         label_tensor = torch.as_tensor(sample["vessel_label"]).detach()
 
@@ -377,19 +377,19 @@ class AugmentationNapariApp:
 
     @staticmethod
     def _to_numpy_image(tensor: torch.Tensor) -> np.ndarray:
-        """画像テンソルを正規化せずそのままnumpy化する。"""
+        """Convert image tensor to numpy without normalization."""
         arr = tensor.detach().cpu().numpy()
         return arr
 
     @staticmethod
     def _to_numpy_label(tensor: torch.Tensor) -> np.ndarray:
-        """整数ラベルテンソルをnumpy化する。"""
+        """Convert integer label tensor to numpy."""
         arr = tensor.detach().to(torch.int64).cpu().numpy()
         return arr
 
     @staticmethod
     def _maybe_points_numpy(data: Optional[torch.Tensor | np.ndarray | object]) -> Optional[np.ndarray]:
-        """アノテーション点をnumpyに変換する。"""
+        """Convert annotation points to numpy."""
         if data is None:
             return None
         if isinstance(data, np.ndarray):
@@ -401,7 +401,7 @@ class AugmentationNapariApp:
 
     @staticmethod
     def _maybe_valid_numpy(data: Optional[torch.Tensor | np.ndarray | object]) -> Optional[np.ndarray]:
-        """アノテーション点の有効フラグをnumpyに変換する。"""
+        """Convert annotation point validity flags to numpy."""
         if data is None:
             return None
         if isinstance(data, np.ndarray):
@@ -412,12 +412,12 @@ class AugmentationNapariApp:
         return tensor.numpy()
 
     def _setup_or_update_layers(self, variant: str, bundle: SampleBundle) -> None:
-        """napariレイヤーを生成または更新し、後から表示切替できるよう保持する。"""
+        """Create or update napari layers and keep them for later display toggling."""
         variant_layers = self.layers.setdefault(variant, {})
         optional_flags = self.layer_optional_flags.setdefault(variant, {})
         name_prefix = variant
 
-        # 画像レイヤー
+        # Image layer
         image = self._to_numpy_image(bundle.image_t)
         channels: List[np.ndarray]
         if image.ndim == 4:
@@ -441,7 +441,7 @@ class AugmentationNapariApp:
             variant_layers["image"] = layers_list
         else:
             layers_list = list(existing_images) if isinstance(existing_images, list) else [existing_images]
-            # チャネル数が変動した場合は一旦レイヤーを再生成
+            # Recreate layers if channel count changes
             if len(layers_list) != len(channels):
                 for layer in layers_list:
                     self.viewer.layers.remove(layer)
@@ -463,7 +463,7 @@ class AugmentationNapariApp:
                     layer.data = channel_data
         optional_flags["image"] = True
 
-        # ラベルレイヤー
+        # Label layer
         label = self._to_numpy_label(bundle.vessel_label_t)
         if label.ndim == 4:
             label = label.squeeze(0)
@@ -482,7 +482,7 @@ class AugmentationNapariApp:
             label_layer.data = label.astype(np.int16)
         optional_flags["label"] = True
 
-        # 球体マスクレイヤー（オプション）
+        # Sphere mask layer (optional)
         sphere_layer_entry = variant_layers.get("sphere")
         sphere = None
         if bundle.sphere_mask_t is not None:
@@ -515,7 +515,7 @@ class AugmentationNapariApp:
             sphere_layer.data = np.zeros_like(sphere_layer.data)
             optional_flags["sphere"] = False
 
-        # アノテーション点レイヤー（オプション）
+        # Annotation point layer (optional)
         points_layer_entry = variant_layers.get("points")
         pts_np = self._maybe_points_numpy(bundle.ann_points_t)
         valid_np = self._maybe_valid_numpy(bundle.ann_points_valid_t)

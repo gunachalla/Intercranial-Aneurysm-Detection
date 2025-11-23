@@ -1,5 +1,5 @@
 """
-nnUNetのvalidation予測結果をnapariで可視化するツール
+Tool to visualize nnUNet validation prediction results in napari
 """
 
 import numpy as np
@@ -17,7 +17,7 @@ from src.my_utils.rsna_utils import load_nifti_and_convert_to_ras
 
 
 class NapariNnunetValidationVisualizer:
-    """nnUNetのvalidation結果をnapariで可視化するクラス"""
+    """Class to visualize nnUNet validation results in napari"""
 
     def __init__(
         self,
@@ -27,13 +27,13 @@ class NapariNnunetValidationVisualizer:
         labels_dir: str = "/workspace/data/nnUNet/nnUNet_raw/Dataset001_VesselSegmentation/labelsTr",
     ):
         """
-        初期化
+        Initialize
 
         Args:
-            result_dir (str): nnUNet結果ディレクトリのパス
-            fold (Union[int, str]): 表示するfold番号または"all"
-            images_dir (str): 元画像のディレクトリパス
-            labels_dir (str): Ground Truthのディレクトリパス
+            result_dir (str): Path to nnUNet result directory
+            fold (Union[int, str]): Fold number to display or "all"
+            images_dir (str): Path to original images directory
+            labels_dir (str): Path to Ground Truth directory
         """
         self.result_dir = Path(result_dir).expanduser()
         if not self.result_dir.exists():
@@ -41,44 +41,44 @@ class NapariNnunetValidationVisualizer:
         self.images_dir = Path(images_dir)
         self.labels_dir = Path(labels_dir)
 
-        # 利用可能なfoldリストを取得
+        # Get list of available folds
         self.available_folds = self._get_available_folds()
         if len(self.available_folds) == 0:
             raise ValueError(f"No validation directories found under: {self.result_dir}")
 
-        # fold引数を正規化
+        # Normalize fold argument
         self.fold = self._resolve_fold_selection(fold)
         if self.fold != "all" and self.fold not in self.available_folds:
             raise ValueError(f"Fold {self.fold} not found in result directory")
 
-        # fold切り替え候補を準備
+        # Prepare fold switching candidates
         self.fold_options: List[Union[int, str]] = list(self.available_folds)
         if (len(self.available_folds) > 1 or self.fold == "all") and "all" not in self.fold_options:
             self.fold_options.append("all")
 
-        # メトリクスとfold情報を保持するキャッシュ
+        # Cache to hold metrics and fold information
         self._metrics_cache: Dict[Union[int, str], Optional[Dict]] = {}
         self.path_to_fold: Dict[Path, Union[int, str]] = {}
 
-        # ビューワー関連
+        # Viewer related
         self.viewer = None
         self.prediction_list = self._get_prediction_list()
         self.current_index = 0
 
-        # 表示モード（0: 予測のみ, 1: GTのみ, 2: 差分表示）
+        # Display mode (0: Prediction only, 1: GT only, 2: Diff display)
         self.display_mode = 0
-        self.display_mode_names = ["予測のみ", "GTのみ", "差分表示"]
+        self.display_mode_names = ["Prediction only", "GT only", "Diff display"]
 
         self.show_metrics = False
 
     def _fold_sort_key(self, fold: Union[int, str]) -> Tuple[int, Union[int, str]]:
-        """fold一覧整列用のキーを生成"""
+        """Generate key for sorting fold list"""
         if isinstance(fold, int):
             return (0, fold)
         return (1, fold)
 
     def _get_available_folds(self) -> List[Union[int, str]]:
-        """利用可能なfoldのリストを取得"""
+        """Get list of available folds"""
         folds: List[Union[int, str]] = []
         for fold_dir in sorted(self.result_dir.glob("fold_*")):
             if not fold_dir.is_dir():
@@ -97,7 +97,7 @@ class NapariNnunetValidationVisualizer:
         return folds
 
     def _resolve_fold_selection(self, fold: Union[int, str]) -> Union[int, str]:
-        """fold引数を正規化"""
+        """Normalize fold argument"""
         if isinstance(fold, str):
             fold_lower = fold.lower()
             if fold_lower == "all":
@@ -115,20 +115,20 @@ class NapariNnunetValidationVisualizer:
         return fold
 
     def _get_validation_dir(self, fold: Union[int, str]) -> Path:
-        """foldに対応するvalidationディレクトリを取得"""
+        """Get validation directory corresponding to fold"""
         validation_dir = self.result_dir / f"fold_{fold}" / "validation"
         if not validation_dir.exists():
             raise ValueError(f"Validation directory not found: {validation_dir}")
         return validation_dir
 
     def _format_selection_label(self, selection: Union[int, str]) -> str:
-        """fold選択の表示用文字列を生成"""
+        """Generate display string for fold selection"""
         if selection == "all":
             return "fold_all"
         return f"fold_{selection}"
 
     def _get_prediction_list(self) -> List[Path]:
-        """予測ファイルのリストを取得"""
+        """Get list of prediction files"""
         self.path_to_fold.clear()
 
         if self.fold == "all":
@@ -161,7 +161,7 @@ class NapariNnunetValidationVisualizer:
         return predictions
 
     def _get_metrics_for_fold(self, fold: Union[int, str]) -> Optional[Dict]:
-        """validation/summary.jsonから評価メトリクスを読み込む"""
+        """Load evaluation metrics from validation/summary.json"""
         if fold in self._metrics_cache:
             return self._metrics_cache[fold]
 
@@ -180,24 +180,24 @@ class NapariNnunetValidationVisualizer:
         return None
 
     def _get_uid_from_prediction_path(self, prediction_path: Path) -> str:
-        """予測ファイル名からUIDを取得"""
-        # ファイル名から.nii.gzを除去してUIDを取得
+        """Get UID from prediction filename"""
+        # Remove .nii.gz from filename to get UID
         return prediction_path.name.replace(".nii.gz", "")
 
     def _get_image_path(self, uid: str) -> Path:
-        """UIDから元画像のパスを取得"""
+        """Get original image path from UID"""
         return self.images_dir / f"{uid}_0000.nii.gz"
 
     def _get_label_path(self, uid: str) -> Path:
-        """UIDからGround Truthのパスを取得"""
+        """Get Ground Truth path from UID"""
         return self.labels_dir / f"{uid}.nii.gz"
 
     def _setup_keyboard_bindings(self):
-        """キーボードイベントをセットアップ"""
+        """Setup keyboard events"""
 
         @self.viewer.bind_key("n")
         def next_case(viewer):
-            """次のケースに移動 (n key)"""
+            """Move to next case (n key)"""
             if len(self.prediction_list) == 0:
                 print("No prediction files available")
                 return
@@ -210,7 +210,7 @@ class NapariNnunetValidationVisualizer:
 
         @self.viewer.bind_key("p")
         def previous_case(viewer):
-            """前のケースに移動 (p key)"""
+            """Move to previous case (p key)"""
             if len(self.prediction_list) == 0:
                 print("No prediction files available")
                 return
@@ -223,25 +223,25 @@ class NapariNnunetValidationVisualizer:
 
         @self.viewer.bind_key("v")
         def toggle_display_mode(viewer):
-            """表示モードを切り替え (v key)"""
+            """Toggle display mode (v key)"""
             self.display_mode = (self.display_mode + 1) % 3
             mode_name = self.display_mode_names[self.display_mode]
-            print(f"表示モード: {mode_name}")
+            print(f"Display mode: {mode_name}")
             self._update_display_mode()
 
-            # 差分表示の場合は凡例を表示
-            if self.display_mode == 2:  # 差分表示
-                print("  凡例: ■ 白=True Positive, ■ 赤=False Positive, ■ 黄=False Negative")
+            # Display legend if in diff display mode
+            if self.display_mode == 2:  # Diff display
+                print("  Legend: ■ White=True Positive, ■ Red=False Positive, ■ Yellow=False Negative")
 
         @self.viewer.bind_key("c")
         def reset_camera(viewer):
-            """カメラをリセット (c key)"""
+            """Reset camera (c key)"""
             print("Camera reset")
             viewer.reset_view()
 
         @self.viewer.bind_key("f")
         def switch_fold(viewer):
-            """foldを切り替え (f key)"""
+            """Switch fold (f key)"""
             if len(self.fold_options) <= 1:
                 print("Only one fold option available")
                 return
@@ -260,7 +260,7 @@ class NapariNnunetValidationVisualizer:
 
         @self.viewer.bind_key("e")
         def toggle_metrics(viewer):
-            """評価メトリクスの表示を切り替え (e key)"""
+            """Toggle evaluation metrics display (e key)"""
             self.show_metrics = not self.show_metrics
             if self.show_metrics:
                 self._display_metrics()
@@ -280,26 +280,26 @@ class NapariNnunetValidationVisualizer:
         print("  'e' - Toggle metrics display")
 
     def _update_display_mode(self):
-        """現在の表示モードに基づいてレイヤーの表示を更新"""
-        pred_layer = self._get_layer_by_name("予測")
+        """Update layer visibility based on current display mode"""
+        pred_layer = self._get_layer_by_name("Prediction")
         gt_layer = self._get_layer_by_name("Ground Truth")
-        diff_layer = self._get_layer_by_name("差分")
+        diff_layer = self._get_layer_by_name("Diff")
 
-        if self.display_mode == 0:  # 予測のみ
+        if self.display_mode == 0:  # Prediction only
             if pred_layer:
                 pred_layer.visible = True
             if gt_layer:
                 gt_layer.visible = False
             if diff_layer:
                 diff_layer.visible = False
-        elif self.display_mode == 1:  # GTのみ
+        elif self.display_mode == 1:  # GT only
             if pred_layer:
                 pred_layer.visible = False
             if gt_layer:
                 gt_layer.visible = True
             if diff_layer:
                 diff_layer.visible = False
-        elif self.display_mode == 2:  # 差分表示
+        elif self.display_mode == 2:  # Diff display
             if pred_layer:
                 pred_layer.visible = False
             if gt_layer:
@@ -307,11 +307,11 @@ class NapariNnunetValidationVisualizer:
             if diff_layer:
                 diff_layer.visible = True
 
-        # タイトルを更新
+        # Update title
         self._update_title()
 
     def _update_title(self):
-        """ビューワーのタイトルを更新"""
+        """Update viewer title"""
         if self.viewer and len(self.prediction_list) > 0:
             current_file = self.prediction_list[self.current_index]
             case_fold = self.path_to_fold.get(current_file)
@@ -330,7 +330,7 @@ class NapariNnunetValidationVisualizer:
             self.viewer.title = title
 
     def _display_metrics(self):
-        """評価メトリクスを表示"""
+        """Display evaluation metrics"""
         if len(self.prediction_list) == 0:
             print("No prediction files available")
             return
@@ -371,7 +371,7 @@ class NapariNnunetValidationVisualizer:
                     break
 
     def _get_layer_by_name(self, name_pattern: str):
-        """名前パターンでレイヤーを検索"""
+        """Search layer by name pattern"""
         if not self.viewer:
             return None
         for layer in self.viewer.layers:
@@ -380,7 +380,7 @@ class NapariNnunetValidationVisualizer:
         return None
 
     def _update_or_create_layer(self, layer_name: str, data=None, layer_type="image", **kwargs):
-        """レイヤーが存在する場合はデータを更新、存在しない場合は新規作成"""
+        """Update data if layer exists, otherwise create new"""
         if not self.viewer:
             return
 
@@ -410,39 +410,39 @@ class NapariNnunetValidationVisualizer:
                 self.viewer.add_labels(data, name=layer_name, **kwargs)
 
     def _compute_diff_mask(self, pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
-        """予測とGTの差分マスクを計算
+        """Compute difference mask between prediction and GT
 
         Returns:
-            差分マスク（0: 背景, 1: True Positive, 2: False Positive, 3: False Negative）
+            Diff mask (0: Background, 1: True Positive, 2: False Positive, 3: False Negative)
         """
         diff = np.zeros_like(pred, dtype=np.uint8)
 
-        # True Positive (両方が1)
+        # True Positive (Both are 1)
         diff[(pred > 0) & (gt > 0)] = 1
 
-        # False Positive (予測のみ1)
+        # False Positive (Prediction only 1)
         diff[(pred > 0) & (gt == 0)] = 2
 
-        # False Negative (GTのみ1)
+        # False Negative (GT only 1)
         diff[(pred == 0) & (gt > 0)] = 3
 
         return diff
 
     def _load_and_display_case(self, prediction_path: Path):
-        """指定された予測ファイルを読み込んで表示"""
+        """Load and display specified prediction file"""
         try:
-            # UIDを取得
+            # Get UID
             uid = self._get_uid_from_prediction_path(prediction_path)
             print(f"Loading UID: {uid}")
             case_fold = self.path_to_fold.get(prediction_path)
             if case_fold is not None:
                 print(f"Fold: fold_{case_fold}")
 
-            # 予測を読み込む
+            # Load prediction
             pred_data, _, _ = load_nifti_and_convert_to_ras(prediction_path)
             pred_zyx = np.transpose(pred_data, (2, 1, 0)).astype(np.uint32)
 
-            # 元画像を読み込む
+            # Load original image
             image_path = self._get_image_path(uid)
             if not image_path.exists():
                 print(f"Warning: Image file not found: {image_path}")
@@ -451,15 +451,15 @@ class NapariNnunetValidationVisualizer:
             image_data, _, _ = load_nifti_and_convert_to_ras(image_path)
             image_zyx = np.transpose(image_data, (2, 1, 0))
 
-            # ボクセルスペーシングを取得
+            # Get voxel spacing
             nii_img = nib.load(str(image_path))
             zooms_xyz = nii_img.header.get_zooms()[:3]
             voxel_spacing_zyx = (zooms_xyz[2], zooms_xyz[1], zooms_xyz[0])
 
-            # 画像を正規化
+            # Normalize image
             image_normalized = self._normalize_volume(image_zyx)
 
-            # Ground Truthを読み込む
+            # Load Ground Truth
             gt_data = None
             label_path = self._get_label_path(uid)
             if label_path.exists():
@@ -468,14 +468,14 @@ class NapariNnunetValidationVisualizer:
             else:
                 print(f"Warning: Ground Truth file not found: {label_path}")
 
-            # 差分マスクを計算
+            # Compute diff mask
             diff_data = None
             if gt_data is not None:
                 diff_data = self._compute_diff_mask(pred_zyx, gt_data)
 
-            # レイヤーを更新
+            # Update layers
             self._update_or_create_layer(
-                "元画像",
+                "Original Image",
                 image_normalized,
                 layer_type="image",
                 colormap="gray",
@@ -483,16 +483,16 @@ class NapariNnunetValidationVisualizer:
                 opacity=0.8,
             )
 
-            # 予測レイヤー（青系）
+            # Prediction layer (Blue-ish)
             self._update_or_create_layer(
-                "予測",
+                "Prediction",
                 pred_zyx,
                 layer_type="labels",
                 opacity=0.5,
                 scale=voxel_spacing_zyx,
             )
 
-            # Ground Truthレイヤー（緑系）
+            # Ground Truth layer (Green-ish)
             if gt_data is not None:
                 self._update_or_create_layer(
                     "Ground Truth",
@@ -502,20 +502,20 @@ class NapariNnunetValidationVisualizer:
                     scale=voxel_spacing_zyx,
                 )
 
-            # 差分レイヤー
+            # Diff layer
             if diff_data is not None:
-                # カスタムカラーマップを作成
-                # napariのラベルレイヤーの色指定
+                # Create custom colormap
+                # Color specification for napari label layer
                 diff_colors = {
-                    0: [0, 0, 0, 0],  # 背景（透明）
-                    1: [0, 0, 1, 1],  # TP（青）
-                    2: [1, 0, 0, 1],  # FP（赤）
-                    3: [1, 1, 0, 1],  # FN（黄）
+                    0: [0, 0, 0, 0],  # Background (Transparent)
+                    1: [0, 0, 1, 1],  # TP (Blue)
+                    2: [1, 0, 0, 1],  # FP (Red)
+                    3: [1, 1, 0, 1],  # FN (Yellow)
                 }
 
-                # 差分レイヤーを作成または更新
+                # Create or update diff layer
                 self._update_or_create_layer(
-                    "差分",
+                    "Diff",
                     diff_data,
                     layer_type="labels",
                     opacity=0.8,
@@ -523,26 +523,26 @@ class NapariNnunetValidationVisualizer:
                     colormap=diff_colors,
                 )
 
-                # レイヤー名を更新して凡例を含める
-                diff_layer = self._get_layer_by_name("差分")
+                # Update layer name to include legend
+                diff_layer = self._get_layer_by_name("Diff")
                 if diff_layer:
-                    diff_layer.name = "差分 (青:TP, 赤:FP, 黄:FN)"
+                    diff_layer.name = "Diff (Blue:TP, Red:FP, Yellow:FN)"
 
-            # 表示モードを適用
+            # Apply display mode
             self._update_display_mode()
 
-            # カメラをリセット
+            # Reset camera
             if self.viewer:
                 self.viewer.reset_view()
 
-            # データ情報を表示
-            print(f"\n=== データ情報 ===")
-            print(f"予測形状: {pred_zyx.shape}")
-            print(f"画像形状: {image_zyx.shape}")
+            # Display data info
+            print(f"\n=== Data Info ===")
+            print(f"Prediction shape: {pred_zyx.shape}")
+            print(f"Image shape: {image_zyx.shape}")
             if gt_data is not None:
-                print(f"GT形状: {gt_data.shape}")
+                print(f"GT shape: {gt_data.shape}")
 
-                # 簡易メトリクスを計算
+                # Compute quick metrics
                 pred_binary = pred_zyx > 0
                 gt_binary = gt_data > 0
 
@@ -559,7 +559,7 @@ class NapariNnunetValidationVisualizer:
 
             print(f"Voxel spacing: {voxel_spacing_zyx}")
 
-            # メトリクスを表示（有効な場合）
+            # Display metrics (if enabled)
             if self.show_metrics:
                 self._display_metrics()
 
@@ -570,10 +570,10 @@ class NapariNnunetValidationVisualizer:
             traceback.print_exc()
 
     def _normalize_volume(self, volume: np.ndarray) -> np.ndarray:
-        """ボリュームデータを正規化"""
+        """Normalize volume data"""
         volume_float = volume.astype(np.float32)
 
-        # パーセンタイルベースの正規化
+        # Percentile-based normalization
         p1 = np.percentile(volume_float, 1)
         p99 = np.percentile(volume_float, 99)
 
@@ -592,20 +592,20 @@ class NapariNnunetValidationVisualizer:
 
     def visualize(self, start_index: int = 0, uid: Optional[str] = None) -> napari.Viewer:
         """
-        Napariビューワーを起動
+        Launch Napari viewer
 
         Args:
-            start_index (int): 開始インデックス
-            uid (str, optional): 特定のUIDを指定
+            start_index (int): Start index
+            uid (str, optional): Specific UID
 
         Returns:
-            napari.Viewer: napariビューワー
+            napari.Viewer: napari viewer
         """
         if len(self.prediction_list) == 0:
             print("No prediction files found")
             return None
 
-        # 特定のUIDが指定された場合、そのインデックスを探す
+        # If specific UID is specified, find its index
         if uid:
             uid_found = False
             for i, pred_path in enumerate(self.prediction_list):
@@ -619,31 +619,31 @@ class NapariNnunetValidationVisualizer:
             if not uid_found:
                 print(f"Warning: Specified UID '{uid}' not found in validation results")
 
-        # 開始インデックスを調整
+        # Adjust start index
         start_index = max(0, min(start_index, len(self.prediction_list) - 1))
         self.current_index = start_index
 
-        # 最初のファイル
+        # First file
         first_file = self.prediction_list[start_index]
         print(f"Starting with file {start_index + 1}/{len(self.prediction_list)}: {first_file.name}")
         first_fold = self.path_to_fold.get(first_file)
         if first_fold is not None:
             print(f"Case fold: fold_{first_fold}")
 
-        # napariビューワーを作成
+        # Create napari viewer
         self.viewer = napari.Viewer(title=f"nnUNet Validation Viewer - {first_file.name}")
 
-        # キーボードバインディングをセットアップ
+        # Setup keyboard bindings
         self._setup_keyboard_bindings()
 
-        # 最初のケースを表示
+        # Display first case
         self._load_and_display_case(first_file)
 
         return self.viewer
 
 
 def main():
-    """メイン関数"""
+    """Main function"""
     parser = argparse.ArgumentParser(description="nnUNet Validation Visualizer")
     parser.add_argument(
         "--result-dir",
@@ -701,7 +701,7 @@ def main():
     print(f"Labels directory: {args.labels_dir}")
 
     try:
-        # ビジュアライザーを作成
+        # Create visualizer
         visualizer = NapariNnunetValidationVisualizer(
             result_dir=args.result_dir,
             fold=fold_arg,
@@ -709,25 +709,25 @@ def main():
             labels_dir=args.labels_dir,
         )
 
-        # 利用可能なfoldを表示
+        # Display available folds
         if len(visualizer.available_folds) > 0:
             print(f"Available folds: {visualizer.available_folds}")
 
-        # ビューワーを起動
+        # Launch viewer
         viewer = visualizer.visualize(start_index=args.start_index, uid=args.uid)
 
         if viewer:
-            print("\n=== Napariビューワーが開きました ===")
-            print("基本操作:")
-            print("- マウスホイール: ズーム")
-            print("- 右クリック+ドラッグ: 回転")
-            print("- 左クリック+ドラッグ: 平行移動")
-            print("- スライダー: 各軸のスライス位置調整")
+            print("\n=== Napari viewer opened ===")
+            print("Basic operations:")
+            print("- Mouse wheel: Zoom")
+            print("- Right click + drag: Rotate")
+            print("- Left click + drag: Pan")
+            print("- Slider: Adjust slice position for each axis")
 
-            # napariを実行
+            # Run napari
             napari.run()
         else:
-            print("可視化に失敗しました")
+            print("Visualization failed")
 
     except Exception as e:
         print(f"Error: {e}")

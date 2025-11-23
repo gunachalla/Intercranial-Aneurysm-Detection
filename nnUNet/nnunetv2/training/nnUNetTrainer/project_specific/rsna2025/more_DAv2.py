@@ -56,9 +56,9 @@ from nnunetv2.training.nnUNetTrainer.variants.data_augmentation.nnUNetTrainerDA5
 
 
 # v2
-# 90度回転、軸転置を削除
-# メディアンフィルタ、ガウシアンブラーを追加
-# SimulateLowResolutionTransformの確率をデフォルトと同じ0.25に変更
+# Removed 90-degree rotation and axis transposition
+# Added median filter and Gaussian blur
+# Changed SimulateLowResolutionTransform probability to 0.25 (same as default)
 class RSNA2025Trainer_moreDAv2(nnUNetTrainer_onlyMirror01):
     def get_training_transforms(
         self,
@@ -112,7 +112,7 @@ class RSNA2025Trainer_moreDAv2(nnUNetTrainer_onlyMirror01):
         if do_dummy_2d_data_aug:
             transforms.append(Convert2DTo3DTransform())
 
-        # 90度回転、軸転置は不適切？
+        # 90-degree rotation and axis transposition are inappropriate?
         # if np.any(matching_axes > 1):
         #     transforms.append(
         #         RandomTransform(
@@ -286,7 +286,7 @@ class RSNA2025Trainer_moreDAv2(nnUNetTrainer_onlyMirror01):
         )
 
         # ------------------------------------------------------------
-        # 以下、デフォルトのデータ拡張にもある項目
+        # Below are items also present in default data augmentation
         # ------------------------------------------------------------
         if use_mask_for_norm is not None and any(use_mask_for_norm):
             transforms.append(
@@ -334,7 +334,7 @@ class RSNA2025Trainer_moreDAv2(nnUNetTrainer_onlyMirror01):
                 )
             )
 
-        # ここでマスクをヒートマッヒートマップに変換している？
+        # Converting mask to heatmap here?
         # transforms.append(
         #     ConvertSegToRegrTarget(
         #         "EDT", gaussian_sigma=self.min_motor_distance // 3, edt_radius=self.min_motor_distance

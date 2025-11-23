@@ -107,7 +107,7 @@ def _find_ckpt_path(log_dir: Path, ckpt_type: str) -> Optional[Path]:
 
 
 class RoiForExport(torch.nn.Module):
-    """推論用ラッパーモジュール（ONNX/TRT化のためにI/Oを簡素化）。"""
+    """Wrapper module for inference (simplify I/O for ONNX/TRT conversion)."""
 
     def __init__(self, module: torch.nn.Module, use_ema: bool = True) -> None:
         super().__init__()
@@ -121,7 +121,7 @@ class RoiForExport(torch.nn.Module):
         vessel_union: torch.Tensor,
         extra_vessel: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # 日本語コメント: LitModuleのforwardへ委譲し、14クラスlogitsのみを返す
+        # Delegate to LitModule's forward and return only 14-class logits
         out = self.module(
             roi,
             vessel_seg=vessel_seg,
@@ -143,13 +143,13 @@ def _export_onnx(
     opset: int,
     verbose: bool,
 ) -> None:
-    """ONNXへエクスポート（必要に応じて動的軸を付与）。"""
-    # 日本語コメント: 入力名/出力名を固定して推論側との整合性を保つ
+    """Export to ONNX (add dynamic axes if necessary)."""
+    # Fix input/output names to maintain consistency with inference side
     input_names = list(dummy_inputs.keys())
     output_names = ["logits"]
 
     if dynamic:
-        # 日本語コメント: N,D,H,W を動的化（Cは固定）。
+        # Make N,D,H,W dynamic (C is fixed).
         dyn = {}
         for k, t in dummy_inputs.items():
             if t.dim() == 5:
@@ -160,7 +160,7 @@ def _export_onnx(
     else:
         dyn = None
 
-    # 日本語コメント: 推論モード/勾配無効で追跡（ONNXエクスポート時のメモリ削減）
+    # Trace in inference mode/no gradient (reduce memory during ONNX export)
     torch.onnx.export(
         model,
         tuple(dummy_inputs[k] for k in input_names),
@@ -174,7 +174,7 @@ def _export_onnx(
         verbose=verbose,
     )
 
-    # 日本語コメント: onnx-simplifier で簡約（任意）
+    # Simplify with onnx-simplifier (optional)
     try:
         import onnx  # type: ignore
         from onnxsim import simplify  # type: ignore
@@ -199,16 +199,16 @@ def _trt_build_engine_multi_input_python(
     max_aux_streams: int = 4,
     restrict_tactics: str = "all",
 ) -> None:
-    """TensorRT Python APIで多入力ONNXからエンジンをビルド（省メモリ対応）。
+    """Build engine from multi-input ONNX using TensorRT Python API (memory saving support).
 
-    引数:
-      - workspace_mb: WORKSPACE上限（MB）。小さくするとアルゴリズム候補が減り省メモリ
-      - tactic_mem_mb: TACTIC_SHARED_MEMORY上限（MB、TRT>=8.6等で有効）
-      - opt_level: Builderの最適化レベル（0..5）。0は最小メモリ
-      - max_aux_streams: 補助ストリーム数。小さいほどメモリ節約
-      - restrict_tactics: タクティック制限（"all"/"cublas"/"cublas_cudnn"）
+    Arguments:
+      - workspace_mb: WORKSPACE limit (MB). Smaller value reduces algorithm candidates and saves memory
+      - tactic_mem_mb: TACTIC_SHARED_MEMORY limit (MB, effective for TRT>=8.6 etc.)
+      - opt_level: Builder optimization level (0..5). 0 is minimum memory
+      - max_aux_streams: Number of auxiliary streams. Smaller value saves memory
+      - restrict_tactics: Tactic restriction ("all"/"cublas"/"cublas_cudnn")
     """
-    # 日本語コメント: 入力ごとに最適化プロファイルを設定し、BuilderConfigを省メモリ設定
+    # Set optimization profile for each input and configure BuilderConfig for memory saving
     import tensorrt as trt  # type: ignore
 
     logger = trt.Logger(trt.Logger.INFO)
@@ -226,20 +226,20 @@ def _trt_build_engine_multi_input_python(
 
     config = builder.create_builder_config()
 
-    # 日本語コメント: WORKSPACEメモリ上限（TRT10API優先）
+    # WORKSPACE memory limit (TRT10 API priority)
     try:
         config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, int(workspace_mb) << 20)
     except Exception:
         config.max_workspace_size = int(workspace_mb) << 20
 
-    # 日本語コメント: TACTIC共有メモリ上限（利用可能な場合のみ）
+    # TACTIC shared memory limit (only if available)
     if tactic_mem_mb is not None:
         try:
             config.set_memory_pool_limit(trt.MemoryPoolType.TACTIC_SHARED_MEMORY, int(tactic_mem_mb) << 20)
         except Exception:
             pass
 
-    # 日本語コメント: 最適化レベル/補助ストリーム抑制
+    # Optimization level/suppress auxiliary streams
     try:
         config.set_builder_optimization_level(int(opt_level))
     except Exception:
@@ -248,11 +248,11 @@ def _trt_build_engine_multi_input_python(
         config.set_max_aux_streams(int(max_aux_streams))
     except Exception:
         try:
-            config.max_aux_streams = int(max_aux_streams)  # 古いAPI
+            config.max_aux_streams = int(max_aux_streams)  # Old API
         except Exception:
             pass
 
-    # 日本語コメント: タクティック探索を制限（cuDNN省略でメモリ節約）
+    # Restrict tactic search (omit cuDNN to save memory)
     try:
         src = 0
         has = getattr(trt, "TacticSource", None)
@@ -271,19 +271,19 @@ def _trt_build_engine_multi_input_python(
     except Exception:
         pass
 
-    # 日本語コメント: FP16を有効（対応GPUのみ）
+    # Enable FP16 (supported GPU only)
     if use_fp16 and getattr(builder, "platform_has_fast_fp16", True):
         try:
             config.set_flag(trt.BuilderFlag.FP16)
         except Exception:
             pass
-    # 日本語コメント: シリアライズ高速化（ビルド時間/一部メモリ抑制の期待）
+    # Fast serialization (expect build time/some memory reduction)
     try:
         config.set_flag(trt.BuilderFlag.FAST_SERIALIZE)
     except Exception:
         pass
 
-    # 日本語コメント: 最適化プロファイル設定
+    # Optimization profile settings
     profile = builder.create_optimization_profile()
     net_input_names = [network.get_input(i).name for i in range(network.num_inputs)]
     for name in net_input_names:
@@ -293,7 +293,7 @@ def _trt_build_engine_multi_input_python(
         profile.set_shape(name, mn, op, mx)
     config.add_optimization_profile(profile)
 
-    # 日本語コメント: エンジンをビルド
+    # Build engine
     serialized_obj = None
     if hasattr(builder, "build_serialized_network"):
         serialized_obj = builder.build_serialized_network(network, config)
@@ -316,8 +316,8 @@ def _trt_build_engine_multi_input_trtexec(
     profiles: Dict[str, Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]],
     use_fp16: bool,
 ) -> None:
-    """trtexec で多入力最適化プロファイルを設定してエンジンをビルド。"""
-    # 日本語コメント: --minShapes/--optShapes/--maxShapes を入力ごとに複数回指定
+    """Build engine with multi-input optimization profile using trtexec."""
+    # Specify --minShapes/--optShapes/--maxShapes multiple times per input
     cmd: List[str] = [
         "trtexec",
         f"--onnx={onnx_path}",
@@ -343,7 +343,7 @@ def _trt_build_engine_multi_input_trtexec(
 
 
 def main() -> None:
-    # 日本語コメント: CLI引数
+    # CLI arguments
     ap = argparse.ArgumentParser(
         description="Convert ROI classification model to ONNX/TensorRT from Hydra experiment"
     )
@@ -358,7 +358,7 @@ def main() -> None:
     ap.add_argument("--onnx-fp16", action="store_true", help="Export ONNX in FP16 (usually not recommended)")
     ap.add_argument("--verbose", action="store_true", help="Verbose logs")
 
-    # 日本語コメント: TensorRTビルド関連のオプション（16GB前提で高性能寄りの既定値）
+    # TensorRT build options (performance-oriented defaults assuming 16GB)
     ap.add_argument("--workspace-mb", type=int, default=4096, help="TRT WORKSPACE limit (MB). 4096-8192 recommended")
     ap.add_argument("--tactic-mem-mb", type=int, default=1024, help="TRT TACTIC_SHARED_MEMORY limit (MB). Ignored if unsupported")
     ap.add_argument("--opt-level", type=int, default=4, help="Builder optimization level (0..5). Higher is faster/more memory")
@@ -391,7 +391,7 @@ def main() -> None:
     if cfg.model.get("compile"):
         cfg.model.compile = False
 
-    # fold反映
+    # Apply fold
     cfg.data.fold = int(args.fold)
 
     # Instantiate model
@@ -415,13 +415,13 @@ def main() -> None:
         if unexpected:
             print(f"[WARN] unexpected keys: {len(unexpected)}")
 
-    # 日本語コメント: 推論ラッパを作成
+    # Create inference wrapper
     wrapper = RoiForExport(model, use_ema=True)
 
-    # 日本語コメント: 入力サイズ/追加セグの有無を取得
+    # Get input size/presence of extra segmentation
     sz = getattr(cfg.data, "input_size", None)
     if sz is None or len(sz) != 3:
-        raise RuntimeError("cfg.data.input_size が不正です（長さ3の配列を想定）")
+        raise RuntimeError("cfg.data.input_size is invalid (expected array of length 3)")
     D, H, W = int(sz[0]), int(sz[1]), int(sz[2])
     num_extra = int(getattr(model.hparams, "num_extra_mask_branches", 0))
     use_extra = num_extra > 0

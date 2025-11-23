@@ -47,7 +47,7 @@ if os.path.isdir(_NNUNET_ROOT) and _NNUNET_ROOT not in sys.path:
     # Add local clone nnUNet package root to sys.path
     sys.path.insert(0, _NNUNET_ROOT)
 
-# nnUNet v2 依存モジュール
+# nnUNet v2 dependency modules
 from batchgenerators.utilities.file_and_folder_operations import join, load_json
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 from nnunetv2.utilities.label_handling.label_handling import determine_num_input_channels
@@ -154,7 +154,7 @@ def _load_nnunet_network(
     plans = load_json(join(model_dir, "plans.json"))
     plans_manager = PlansManager(plans)
 
-    # チェックポイントのロード（fold_* ディレクトリ配下）
+    # Load checkpoint (under fold_* directory)
     fold_dir = _resolve_fold_dir_name(str(fold))
     ckpt_path = join(model_dir, fold_dir, checkpoint_name)
     if not os.path.isfile(ckpt_path):
@@ -298,12 +298,12 @@ def _trt_build_engine_via_python(
     # Handle build API differences across TRT versions
     serialized_obj = None
     if hasattr(builder, "build_serialized_network"):
-        # TRT10系
+        # TRT10 series
         serialized_obj = builder.build_serialized_network(network, config)
         if serialized_obj is None:
             raise RuntimeError("TensorRT build_serialized_network failed")
     else:
-        # TRT8/9系
+        # TRT8/9 series
         engine = builder.build_engine(network, config)
         if engine is None:
             raise RuntimeError("TensorRT build_engine failed")
@@ -316,7 +316,7 @@ def _trt_build_engine_via_python(
         try:
             data = memoryview(serialized_obj).tobytes()
         except Exception:
-            data = serialized_obj  # 最終fallback
+            data = serialized_obj  # Final fallback
 
     with open(engine_out, "wb") as f:
         f.write(data)
@@ -330,12 +330,12 @@ def _trt_build_engine_via_trtexec(
     max_shape: Tuple[int, ...],
     use_fp16: bool,
 ) -> None:
-    """trtexec コマンドでエンジンをビルド（Python APIが無い環境向け）。
-    - --shapes は input名=shape 形式。ここでは input を固定名とする
+    """Build engine with trtexec command (for environments without Python API).
+    - --shapes is in input_name=shape format. Here, input is assumed to be a fixed name.
     """
-    # 日本語コメント: trtexec が無ければ呼び出しに失敗
+    # Fails if trtexec is not available
     input_name = "input"
-    shape_str = f"{input_name}:{'x'.join(str(x) for x in opt_shape)}"  # opt を --shapes に指定
+    shape_str = f"{input_name}:{'x'.join(str(x) for x in opt_shape)}"  # opt specified in --shapes
     min_str = f"{input_name}:{'x'.join(str(x) for x in min_shape)}"
     max_str = f"{input_name}:{'x'.join(str(x) for x in max_shape)}"
 
@@ -351,29 +351,29 @@ def _trt_build_engine_via_trtexec(
     if use_fp16:
         cmd.append("--fp16")
 
-    # 実行
+    # Execute
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"trtexec failed (code={proc.returncode})\n{proc.stdout}")
 
 
 def main() -> None:
-    # 日本語コメント: CLI引数の定義
+    # Define CLI arguments
     parser = argparse.ArgumentParser(description="Convert nnUNet model to ONNX and TensorRT")
     parser.add_argument(
         "--model-dir",
         type=str,
         required=True,
-        help="nnUNet出力ディレクトリ（plans.json, dataset.json がある）",
+        help="nnUNet output directory (contains plans.json, dataset.json)",
     )
     parser.add_argument(
         "--fold",
         type=str,
         default="0",
-        help="使用するfold指定（例: 0, 1, all, fold_all）",
+        help="Specify fold to use (e.g., 0, 1, all, fold_all)",
     )
     parser.add_argument(
-        "--checkpoint-name", type=str, default="checkpoint_final.pth", help="チェックポイント名"
+        "--checkpoint-name", type=str, default="checkpoint_final.pth", help="Checkpoint name"
     )
 
     parser.add_argument(
@@ -487,7 +487,7 @@ def main() -> None:
     except Exception as e:
         print(f"[WARN] TensorRT Python API not available or failed: {e}")
 
-    # trtexec フォールバック
+    # trtexec fallback
     try:
         _trt_build_engine_via_trtexec(
             onnx_path=onnx_out,

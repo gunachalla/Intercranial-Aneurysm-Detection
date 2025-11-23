@@ -124,14 +124,14 @@ class NapariNnunetInferenceVisualizer:
         p = self.images_dir / f"{case_id}_0000.nii.gz"
         return p if p.exists() else None
 
-    # ---------- データ読み込み ----------
+    # ---------- Load Data ----------
     def _load_case(self, case_id: str) -> Dict[str, object]:
         if case_id in self._cache:
             return self._cache[case_id]
 
         out: Dict[str, object] = {}
 
-        # 確率マップ
+        # Probability map
         npz_path = self._npz_path(case_id)
         if npz_path is None:
             raise FileNotFoundError(f".npz not found for case: {case_id}")
@@ -139,30 +139,30 @@ class NapariNnunetInferenceVisualizer:
         probs = npz["probabilities"]  # (C, Z, Y, X)
         out["probs"] = probs
 
-        # セグメンテーション（最終ラベル）
+        # Segmentation (Final label)
         nii_path = self._nii_path(case_id)
         if nii_path is None:
             raise FileNotFoundError(f".nii.gz not found for case: {case_id}")
         seg_data, _, _ = load_nifti_and_convert_to_ras(nii_path)
-        # napariは(Z, Y, X)慣例で扱うため転置
+        # Transpose as napari uses (Z, Y, X) convention
         seg_zyx = np.transpose(seg_data, (2, 1, 0)).astype(np.uint32)
         out["seg"] = seg_zyx
 
-        # 画像（任意）
+        # Image (Optional)
         img_path = self._image_path(case_id)
         if img_path is not None:
             img_data, _, _ = load_nifti_and_convert_to_ras(img_path)
             img_zyx = np.transpose(img_data, (2, 1, 0))
-            # 正規化
+            # Normalization
             img_norm = self._normalize(img_zyx)
             out["img"] = img_norm
 
-            # スケール（ボクセル間隔）
+            # Scale (Voxel spacing)
             nii_img = nib.load(str(img_path))
             zooms_xyz = nii_img.header.get_zooms()[:3]
             out["scale"] = (zooms_xyz[2], zooms_xyz[1], zooms_xyz[0])
         else:
-            # 画像が無い場合はセグのボクセル間隔を使用（存在すれば）
+            # Use segmentation voxel spacing if image is missing (if exists)
             try:
                 nii_seg = nib.load(str(nii_path))
                 zooms_xyz = nii_seg.header.get_zooms()[:3]
@@ -173,7 +173,7 @@ class NapariNnunetInferenceVisualizer:
         self._cache[case_id] = out
         return out
 
-    # ---------- 可視化ロジック ----------
+    # ---------- Visualization Logic ----------
     def _normalize(self, vol: np.ndarray) -> np.ndarray:
         vol = vol.astype(np.float32)
         p1, p99 = np.percentile(vol, [1, 99])
@@ -193,31 +193,31 @@ class NapariNnunetInferenceVisualizer:
         scale: Tuple[float, float, float] = d.get("scale", (1.0, 1.0, 1.0))  # type: ignore
         img: Optional[np.ndarray] = d.get("img")  # type: ignore
 
-        # クラス数
+        # Number of classes
         num_classes = probs.shape[0]
-        # 画像レイヤー
+        # Image layer
         if img is not None:
-            self._add_or_update_image("画像", img, scale=scale, colormap="gray", opacity=0.8)
+            self._add_or_update_image("Image", img, scale=scale, colormap="gray", opacity=0.8)
         
-        # まずレイヤーを生成/更新（後から可視性を切替）
-        # 確率レイヤー（現在のクラス名で作成）
+        # Create/update layers first (toggle visibility later)
+        # Probability layer (create with current class name)
         cur_c = min(self.current_class, num_classes - 1)
         lname_prob = self._class_label_name(cur_c)
         self._add_or_update_image(
-            f"確率: {lname_prob}", probs[cur_c], scale=scale, colormap="magma", opacity=0.7
+            f"Prob: {lname_prob}", probs[cur_c], scale=scale, colormap="magma", opacity=0.7
         )
-        # セグ（全体）
-        self._add_or_update_labels("セグ(全体)", seg.astype(np.uint32), scale=scale, opacity=0.5)
+        # Segmentation (Whole)
+        self._add_or_update_labels("Seg(Whole)", seg.astype(np.uint32), scale=scale, opacity=0.5)
 
-        # 表示制御: 画像は常時表示。'v'で確率(クラス巡回)とセグ全体をトグル
-        prob_layer = self._get_layer("確率:")
-        seg_layer = self._get_layer("セグ(全体)")
+        # Display control: Image always visible. Toggle probability (cycle classes) and whole seg with 'v'
+        prob_layer = self._get_layer("Prob:")
+        seg_layer = self._get_layer("Seg(Whole)")
         if self.view_index < num_classes:
-            # 確率表示モード
+            # Probability display mode
             self.current_class = self.view_index
             new_name = self._class_label_name(self.current_class)
             if prob_layer is not None:
-                prob_layer.name = f"確率: {new_name}"
+                prob_layer.name = f"Prob: {new_name}"
                 prob_layer.data = probs[self.current_class]
                 prob_layer.visible = True
             if seg_layer is not None:
@@ -229,10 +229,10 @@ class NapariNnunetInferenceVisualizer:
             if img is not None and (probs[self.current_class].shape != img.shape or seg.shape != img.shape):
                 print(
                     f"[Warning] shape mismatch: img{img.shape}, prob{probs[self.current_class].shape}, seg{seg.shape}. "
-                    "座標系やクロップの差異がある可能性があります。"
+                    "There might be differences in coordinate system or cropping."
                 )
         else:
-            # セグ表示モード
+            # Segmentation display mode
             if prob_layer is not None:
                 prob_layer.visible = False
             if seg_layer is not None:
@@ -240,7 +240,7 @@ class NapariNnunetInferenceVisualizer:
             self.viewer.title = (
                 f"nnUNet Inference Viewer - Case {self.current_index + 1}/{len(self.case_ids)} - Segmentation"
             )
-        # クラス別セグレイヤーは作成しない（要求仕様）
+        # Do not create per-class segmentation layers (requirement)
 
     # ---------- napari layer helper ----------
     def _get_layer(self, name_contains: str):
@@ -277,7 +277,7 @@ class NapariNnunetInferenceVisualizer:
         label = self.label_names.get(cid, f"class_{cid}")
         return f"{label} ({cid})"
 
-    # ---------- キーバインド ----------
+    # ---------- Key Bindings ----------
     def _setup_keybindings(self):
         @self.viewer.bind_key("n")
         def _next_case(v):
@@ -295,7 +295,7 @@ class NapariNnunetInferenceVisualizer:
 
         @self.viewer.bind_key("v")
         def _next_class(v):
-            # 確率クラス -> ... -> セグ全体 -> 先頭に戻る
+            # Probability class -> ... -> Whole seg -> Return to start
             case_id = self.case_ids[self.current_index]
             probs = self._load_case(case_id)["probs"]  # type: ignore
             num_classes = probs.shape[0]
@@ -318,7 +318,7 @@ class NapariNnunetInferenceVisualizer:
         print("  'v' - Cycle: Prob(class 0..N) -> Seg")
         print("  'c' - Reset camera")
 
-    # ---------- 実行 ----------
+    # ---------- Execution ----------
     def run(self, start_index: int = 0, start_class: Optional[int] = None) -> Optional[napari.Viewer]:
         start_index = max(0, min(start_index, len(self.case_ids) - 1))
         self.current_index = start_index

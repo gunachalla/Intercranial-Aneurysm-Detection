@@ -148,7 +148,7 @@ def visualize_after_gpu_aug(
     """
     B = aug_batch["image"].shape[0]
     imgs = _to_numpy(aug_batch["image"])  # (B,1,D,H,W)
-    # vessel はチャネル次元が 13 or K、union は (B,1,D,H,W)
+    # vessel channel dim is 13 or K, union is (B,1,D,H,W)
     vessel = _to_numpy(aug_batch.get("vessel_seg", None)) if "vessel_seg" in aug_batch else None
     vessel_union = _to_numpy(aug_batch.get("vessel_union", None)) if "vessel_union" in aug_batch else None
     sphere = _to_numpy(aug_batch.get("sphere_mask", None)) if "sphere_mask" in aug_batch else None

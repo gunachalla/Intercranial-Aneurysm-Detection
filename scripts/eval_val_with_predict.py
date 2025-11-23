@@ -77,7 +77,7 @@ def _load_cv_val_list(vessel_pred_dir: str, n_folds: int, split_seed: int, fold:
         if isinstance(fold_splits, dict) and str(fold) in fold_splits
         else fold_splits[fold]
     )
-    val_list: List[str] = list(cur["val"])  # 型明示
+    val_list: List[str] = list(cur["val"])  # Explicit type
     return val_list
 
 
@@ -101,7 +101,7 @@ def _auc_safe(y_true: np.ndarray, y_prob: np.ndarray) -> float:
     """Safe AUC: return 0.5 when either class is missing."""
     y_true = np.asarray(y_true).astype(np.uint8)
     y_prob = np.asarray(y_prob).astype(np.float32)
-    # 片側クラスのみの場合、sklearnは例外になるため0.5を返す
+    # If only one class is present, sklearn raises an exception, so return 0.5
     if len(np.unique(y_true)) < 2:
         return 0.5
     try:
@@ -131,14 +131,14 @@ def _weighted_multilabel_auc(
     y_scores = np.asarray(y_scores)
     n_classes = y_true.shape[1]
 
-    # クラス別AUC（sklearnへ委譲）
+    # Class-wise AUC (delegate to sklearn)
     try:
         individual_aucs = roc_auc_score(y_true, y_scores, average=None)
     except ValueError:
-        # 公式実装と同様のメッセージで例外化
+        # Raise exception with message similar to official implementation
         raise ParticipantVisibleError("AUC could not be calculated from given predictions.")
 
-    # 重み処理（正規化）
+    # Weight processing (normalization)
     if class_weights is None:
         weights_array = np.ones(n_classes)
     else:

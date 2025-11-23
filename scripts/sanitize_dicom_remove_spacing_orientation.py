@@ -100,7 +100,7 @@ def _remove_per_frame_functional_groups(ds, *, remove_thickness: bool) -> Tuple[
         if not pfgs:
             return 0, 0
         for pf in pfgs:
-            # PixelMeasuresSequence（あれば）
+            # PixelMeasuresSequence (if available)
             try:
                 pm = getattr(pf, "PixelMeasuresSequence", None)
                 if pm and len(pm) > 0:
@@ -114,7 +114,7 @@ def _remove_per_frame_functional_groups(ds, *, remove_thickness: bool) -> Tuple[
                             removed_spacing += 1
             except Exception:
                 pass
-            # PlaneOrientationSequence -> ImageOrientationPatient（あれば）
+            # PlaneOrientationSequence -> ImageOrientationPatient (if available)
             try:
                 po = getattr(pf, "PlaneOrientationSequence", None)
                 if po and len(po) > 0:

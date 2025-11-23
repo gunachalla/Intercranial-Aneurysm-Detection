@@ -16,10 +16,10 @@ from .more_DAv6 import SimulateThickSliceTransform
 
 
 class RSNA2025Trainer_moreDAv7(RSNA2025Trainer_moreDAv3):
-    """v7: v6系を基に全軸ミラーと対称軸系ランダム変換を追加したTrainer"""
+    """v7: Trainer based on v6 series, adding full-axis mirroring and symmetric axis random transformations"""
 
     def configure_rotation_dummyDA_mirroring_and_inital_patch_size(self):
-        """全ての空間軸に対するミラーリングを有効化"""
+        """Enable mirroring for all spatial axes"""
         rotation_for_DA, do_dummy_2d_data_aug, initial_patch_size, _ = (
             nnUNetTrainer.configure_rotation_dummyDA_mirroring_and_inital_patch_size(self)
         )

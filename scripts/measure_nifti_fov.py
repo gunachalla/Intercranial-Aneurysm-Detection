@@ -38,7 +38,7 @@ def list_nifti_files(root: Path) -> List[Path]:
     files: List[Path] = []
     for pat in patterns:
         files.extend(root.rglob(pat))
-    # 安定した順序で処理
+    # Process in stable order
     files = sorted(files)
     return files
 
@@ -55,19 +55,19 @@ def analyze_nifti(nifti_path: Path) -> Dict:
     if len(shape) < 3:
         raise ValueError(f"NIfTI with fewer than 3 dimensions is not supported: {nifti_path} (shape={shape})")
 
-    # 4D以上は先頭3軸のみ
+    # Only first 3 axes for 4D or higher
     x, y, z = shape[:3]
 
     affine = img.affine
-    # アフィンから各軸のボクセル間隔（mm）を取得
+    # Get voxel spacing (mm) for each axis from affine
     try:
         sx, sy, sz = affine_voxel_sizes(affine)
     except Exception:
-        # フォールバックとしてヘッダのzoomsを使用
+        # Use header zooms as fallback
         zooms = img.header.get_zooms()[:3]
         sx, sy, sz = float(zooms[0]), float(zooms[1]), float(zooms[2])
 
-    # 実寸サイズ（mm）: ボクセル数 × ボクセル間隔
+    # Physical size (mm): voxel count * voxel spacing
     size_x_mm = float(sx * x)
     size_y_mm = float(sy * y)
     size_z_mm = float(sz * z)
@@ -101,7 +101,7 @@ def analyze_nifti(nifti_path: Path) -> Dict:
         "size_x_mm": size_x_mm,
         "size_y_mm": size_y_mm,
         "size_z_mm": size_z_mm,
-        # 参考情報
+        # Reference info
         "header_zooms_x": float(header_zooms[0]),
         "header_zooms_y": float(header_zooms[1]),
         "header_zooms_z": float(header_zooms[2]),
@@ -191,7 +191,7 @@ def main():
         if i % 50 == 0 or i == len(files):
             print(f"Progress: {i}/{len(files)} processed")
 
-    # CSV保存
+    # Save to CSV
     fieldnames = [
         "series_uid",
         "file",

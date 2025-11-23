@@ -50,7 +50,7 @@ from nnunetv2.training.nnUNetTrainer.variants.data_augmentation.nnUNetTrainerDA5
 
 
 # v3
-# どれかの軸だけ大きくダウンサンプリング(0.1~0.9)
+# Significantly downsample only one of the axes (0.1~0.9)
 class nnUNetTrainerSkeletonRecall_more_DAv3(nnUNetTrainerSkeletonRecall_onlyMirror01):
     def get_training_transforms(
         self,
@@ -86,7 +86,7 @@ class nnUNetTrainerSkeletonRecall_more_DAv3(nnUNetTrainerSkeletonRecall_onlyMirr
             patch_size_spatial = patch_size
             ignore_axes = None
 
-        # どれかの軸だけ大きくダウンサンプリング
+        # Significantly downsample only one of the axes
         transforms.append(
             OneOfTransform(
                 [
@@ -123,7 +123,7 @@ class nnUNetTrainerSkeletonRecall_more_DAv3(nnUNetTrainerSkeletonRecall_onlyMirr
                 ]
             )
         )
-        # どれかの軸だけ大きくダウンサンプリング
+        # Significantly downsample only one of the axes
         transforms.append(
             OneOfTransform(
                 [
@@ -324,7 +324,7 @@ class nnUNetTrainerSkeletonRecall_more_DAv3(nnUNetTrainerSkeletonRecall_onlyMirr
         )
 
         # ------------------------------------------------------------
-        # 以下、デフォルトのデータ拡張にもある項目
+        # Below are items also present in default data augmentation
         # ------------------------------------------------------------
         if use_mask_for_norm is not None and any(use_mask_for_norm):
             transforms.append(
@@ -374,7 +374,7 @@ class nnUNetTrainerSkeletonRecall_more_DAv3(nnUNetTrainerSkeletonRecall_onlyMirr
                 )
             )
 
-        # ここでマスクをヒートマッヒートマップに変換している？
+        # Converting mask to heatmap here?
         # transforms.append(
         #     ConvertSegToRegrTarget(
         #         "EDT", gaussian_sigma=self.min_motor_distance // 3, edt_radius=self.min_motor_distance

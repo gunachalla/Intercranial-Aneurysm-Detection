@@ -15,7 +15,7 @@ SWIN_DEFAULT_FEATURE_SIZE = 24
 
 
 def _compute_warmup_params(num_epochs: int, initial_lr: float) -> Tuple[int, float, float]:
-    """ウォームアップ関連のハイパーパラメータをまとめて計算する。"""
+    """Calculate warmup-related hyperparameters together."""
     if num_epochs > 1:
         if num_epochs >= 10:
             warmup_epochs = max(5, min(50, num_epochs // 10))
@@ -42,7 +42,7 @@ class RSNA2025TrainerSwinUNETR(nnUNetTrainer):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.initial_lr = 8e-4
         self.enable_deep_supervision = False
-        # ウォームアップ期間をエポック数に応じて設定
+        # Set warmup period according to the number of epochs
         self.warmup_epochs, self.warmup_start_lr, self.min_lr = _compute_warmup_params(
             self.num_epochs, self.initial_lr
         )
@@ -87,7 +87,7 @@ class RSNA2025TrainerSwinUNETR(nnUNetTrainer):
         return optimizer, scheduler
 
     def set_deep_supervision_enabled(self, enabled: bool):
-        # SwinUNETRはDeep Supervision非対応のため無効化
+        # Disable Deep Supervision because SwinUNETR does not support it
         return
 
 
@@ -103,7 +103,7 @@ class RSNA2025TrainerSkeletonRecallSwinUNETR_moreDAv3(nnUNetTrainerSkeletonRecal
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.initial_lr = 8e-4
         self.enable_deep_supervision = False
-        # ウォームアップ期間をエポック数に応じて設定
+        # Set warmup period according to the number of epochs
         self.warmup_epochs, self.warmup_start_lr, self.min_lr = _compute_warmup_params(
             self.num_epochs, self.initial_lr
         )
@@ -148,5 +148,5 @@ class RSNA2025TrainerSkeletonRecallSwinUNETR_moreDAv3(nnUNetTrainerSkeletonRecal
         return optimizer, scheduler
 
     def set_deep_supervision_enabled(self, enabled: bool):
-        # SwinUNETRはDeep Supervision非対応のため無効化
+        # Disable Deep Supervision because SwinUNETR does not support it
         return

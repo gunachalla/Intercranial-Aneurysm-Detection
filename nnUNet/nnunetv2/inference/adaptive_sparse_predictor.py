@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import torch
-# scikit-learn は DBSCAN ベース疎探索（DBSCANAdaptiveSparsePredictor）でのみ必要。
-# 未使用時（= VESSEL_NNUNET_SPARSE_MODEL_DIR 未指定など）に ImportError とならないよう、
-# ここでのインポートを任意化する。
+
+# scikit-learn is only required for DBSCAN-based sparse search (DBSCANAdaptiveSparsePredictor).
+# To avoid ImportError when unused (e.g., VESSEL_NNUNET_SPARSE_MODEL_DIR not specified),
+# make the import optional here.
 try:
     from sklearn.cluster import DBSCAN as SklearnDBSCAN  # type: ignore
 except Exception:
@@ -22,38 +23,38 @@ from nnunetv2.utilities.label_handling.label_handling import determine_num_input
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 import nnunetv2
 from monai.inferers import SlidingWindowInferer
-from src.my_utils.trt_runner import TRTRunner  # TensorRT実行ラッパー
+from src.my_utils.trt_runner import TRTRunner  # TensorRT execution wrapper
 
 
 class AdaptiveSparsePredictor(nnUNetPredictor):
-    # 適応型疎探索を使用したnnUNet推論クラス
-    # 大規模ボリュームでは疎探索→詳細推論の2段階処理を行い、
-    # 小規模ボリュームでは通常の推論を実行する
+    # nnUNet inference class using adaptive sparse search
+    # Performs 2-stage processing (sparse search -> detailed inference) for large volumes,
+    # and executes normal inference for small volumes.
 
-    # 定数定義
+    # Constant definitions
     MORPHOLOGY_KERNEL_SIZE = 2
     BINARY_MASK_THRESHOLD = 0.7
 
     def __init__(
         self,
-        # 疎探索判定パラメータ
+        # Sparse search decision parameters
         window_count_threshold: int = 100,
-        # 疎探索パラメータ
+        # Sparse search parameters
         sparse_downscale_factor: float = 2.0,
         sparse_overlap: float = 0.2,
         detection_threshold: float = 0.3,
-        # 疎探索で使うROIマージン
+        # ROI margin used in sparse search
         sparse_bbox_margin_voxels: int = 20,
-        # 密探索（ROI内スライディング）のオーバーラップ率
+        # Overlap rate for dense search (sliding within ROI)
         dense_overlap: float = 0.3,
-        # ROIの上下（SI）方向制御
+        # ROI vertical (SI) direction control
         limit_si_extent: bool = True,
         max_si_extent_mm: float = 150.0,
         si_axis: Optional[int] = 0,
-        # ROIの最小長（mm）保証
+        # ROI minimum length (mm) guarantee
         min_si_extent_mm: float = 100.0,
         min_xy_extent_mm: float = 120.0,
-        # 通常のパラメータ
+        # Normal parameters
         tile_step_size: float = 0.5,
         use_gaussian: bool = True,
         use_mirroring: bool = False,
@@ -64,11 +65,11 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         allow_tqdm: bool = False,
     ):
         # Args:
-        #     window_count_threshold: 疎探索を開始するスライディングウィンドウ分割数の閾値
-        #     sparse_downscale_factor: 疎探索時のダウンサンプリング率
-        #     sparse_overlap: 疎探索時のオーバーラップ率
-        #     detection_threshold: 血管領域検出の閾値
-        #     sparse_bbox_margin_voxels: 疎探索で得た検出領域(BBox)に付与するマージン（ボクセル数）
+        #     window_count_threshold: Threshold for sliding window splits to start sparse search
+        #     sparse_downscale_factor: Downsampling rate during sparse search
+        #     sparse_overlap: Overlap rate during sparse search
+        #     detection_threshold: Threshold for vessel region detection
+        #     sparse_bbox_margin_voxels: Margin (in voxels) added to the detection region (BBox) obtained from sparse search
         super().__init__(
             tile_step_size=tile_step_size,
             use_gaussian=use_gaussian,
@@ -84,31 +85,31 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         self.sparse_downscale_factor = sparse_downscale_factor
         self.sparse_overlap = sparse_overlap
         self.detection_threshold = detection_threshold
-        # 疎探索のBBoxマージン
+        # BBox margin for sparse search
         self.sparse_bbox_margin_voxels = int(sparse_bbox_margin_voxels)
-        # 密探索のオーバーラップ率（tile_step_size = 1 - dense_overlap に変換して内部使用）
+        # Dense search overlap rate (converted to tile_step_size = 1 - dense_overlap for internal use)
         self.dense_overlap = float(dense_overlap)
-        # ROIの上下（SI）方向制御
+        # ROI vertical (SI) direction control
         self.limit_si_extent = limit_si_extent
         self.max_si_extent_mm = max_si_extent_mm
         self.si_axis = si_axis
-        # ROI最小長（mm）設定（SI軸とXY軸で別指定）
+        # ROI minimum length (mm) setting (specified separately for SI axis and XY axis)
         self.min_si_extent_mm = float(min_si_extent_mm)
         self.min_xy_extent_mm = float(min_xy_extent_mm)
-        # 単一foldのネットワーク重み（state_dict）を保持する
-        # アンサンブルは呼び出し側で実施する想定
+        # Holds network weights (state_dict) for a single fold
+        # Ensemble is expected to be performed by the caller
         self.network_weights = None
-        # TensorRT統合: ランナーと制御フラグ
+        # TensorRT integration: Runner and control flags
         self.trt_runner: Optional[TRTRunner] = None
         self.trt_enforce_half_output: bool = True
-        # 識別用の学習設定名を保持（エンジン探索等で使用）
+        # Holds training configuration name for identification (used for engine search, etc.)
         self.trainer_name: Optional[str] = None
         self.configuration_name: Optional[str] = None
 
-    # ===== ヘルパー群（重複処理の集約） =====
+    # ===== Helpers (aggregation of duplicate processing) =====
     @staticmethod
     def _slices_to_tuples(slices: Tuple[slice, ...]) -> List[Tuple[int, int]]:
-        # sliceのタプルを(start, stop)の配列に変換（JSON保存用）
+        # Convert slice tuple to (start, stop) array (for JSON saving)
         tuples: List[Tuple[int, int]] = []
         for s in slices:
             if isinstance(s, slice):
@@ -121,7 +122,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
 
     @staticmethod
     def _add_slices(a: Tuple[slice, ...], b: Tuple[slice, ...]) -> Tuple[slice, ...]:
-        # 2つのスライスを加算してグローバル座標のスライスを返す
+        # Add two slices and return the global coordinate slice
         out: List[slice] = []
         for s1, s2 in zip(a, b):
             out.append(slice(int(s1.start) + int(s2.start), int(s1.start) + int(s2.stop)))
@@ -131,17 +132,17 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
     def _bbox_from_mask(
         mask: torch.Tensor, margin: int | Tuple[int, ...], full_size: torch.Tensor
     ) -> Optional[Tuple[slice, ...]]:
-        # バイナリマスクからBBoxを抽出し、マージンと境界クリップを適用
-        # margin は単一値または各軸ごとのタプルを受け付ける
+        # Extract BBox from binary mask and apply margin and boundary clipping
+        # margin accepts a single value or a tuple for each axis
         if not torch.any(mask):
             return None
         coords = torch.nonzero(mask, as_tuple=False)
         mins = coords.min(dim=0).values
         maxs = coords.max(dim=0).values
-        # マージンの正規化
+        # Margin normalization
         if isinstance(margin, (tuple, list)):
             if len(margin) != len(mins):
-                # 要素数が一致しない場合は不足分を最後の値で埋める
+                # If element counts do not match, fill the shortage with the last value
                 mm = list(margin) + [int(margin[-1])] * (len(mins) - len(margin))
             else:
                 mm = list(margin)
@@ -160,7 +161,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         roi_bbox: Tuple[slice, ...],
         refined_local_bbox: Optional[Tuple[slice, ...]],
     ) -> dict:
-        # 座標変換情報の辞書を生成（元空間→ネットワーク空間）
+        # Generate coordinate transformation info dictionary (original space -> network space)
         props = preprocessed["data_properties"]
         transpose_forward = list(self.plans_manager.transpose_forward)
         transpose_backward = list(self.plans_manager.transpose_backward)
@@ -201,7 +202,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         threshold: float,
         refine_margin_voxels: int | Tuple[int, ...],
     ) -> Optional[Tuple[slice, ...]]:
-        # 密探索logitsから背景以外クラス確率を用いてROIを再抽出
+        # Re-extract ROI using non-background class probabilities from dense search logits
         probs = torch.softmax(prediction_logits, dim=0)
         if probs.shape[0] > 1:
             vessel_prob = torch.max(probs[1:], dim=0)[0]
@@ -212,46 +213,46 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         return self._bbox_from_mask(mask, refine_margin_voxels, full_size)
 
     def should_use_sparse_search(self, image_size: Tuple[int, ...]) -> bool:
-        # 画像サイズとパッチサイズから疎探索を使用するか判定
+        # Determine whether to use sparse search from image size and patch size
         # Args:
-        #     image_size: 入力画像のサイズ (C, H, W, D)形式を想定
+        #     image_size: Input image size assumed to be (C, H, W, D) format
         # Returns:
-        #     疎探索を使用する場合True
-        # 設定がロードされていない場合はFalse
+        #     True if using sparse search
+        # False if configuration is not loaded
         if self.configuration_manager is None:
             return False
 
-        # チャンネル次元を除いた空間次元のサイズ
+        # Spatial dimension size excluding channel dimension
         spatial_size = image_size[1:] if len(image_size) == 4 else image_size
 
-        # スライディングウィンドウの分割数チェック
+        # Check number of sliding window splits
         patch_size = self.configuration_manager.patch_size
         steps = compute_steps_for_sliding_window(spatial_size, patch_size, self.tile_step_size)
         total_windows = np.prod([len(s) for s in steps])
 
         if total_windows > self.window_count_threshold:
             if self.verbose:
-                print(f"ウィンドウ分割数 {total_windows} > {self.window_count_threshold}、疎探索を使用します")
+                print(f"Window split count {total_windows} > {self.window_count_threshold}, using sparse search")
             return True
 
         if self.verbose:
-            print(f"ウィンドウ分割数 {total_windows} <= {self.window_count_threshold}、通常推論を実行します")
+            print(f"Window split count {total_windows} <= {self.window_count_threshold}, executing normal inference")
         return False
 
     @torch.inference_mode()
     def sparse_search(
         self, input_image: torch.Tensor, return_context: bool = False
     ) -> Union[Tuple[slice, ...], Tuple[Tuple[slice, ...], Dict[str, Any]]]:
-        # 疎探索フェーズ: ダウンサンプリングした画像で高速スキャンし、
-        # GPU上で前処理を完結させて単一BBoxを返す
+        # Sparse search phase: Fast scan with downsampled image,
+        # complete preprocessing on GPU and return a single BBox
         # Args:
-        #     input_image: 入力画像テンソル (C, H, W, D)
+        #     input_image: Input image tensor (C, H, W, D)
         # Returns:
-        #     roi_bbox: 単一のROIを示すスライスのタプル
+        #     roi_bbox: Tuple of slices indicating a single ROI
         if self.verbose:
-            print("疎探索フェーズを開始...")
+            print("Starting sparse search phase...")
 
-        # ダウンサンプリング
+        # Downsampling
         downscale_factors = [1] + [1 / self.sparse_downscale_factor] * (input_image.ndim - 1)
         downsampled = torch.nn.functional.interpolate(
             input_image.unsqueeze(0),
@@ -261,17 +262,17 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         ).squeeze(0)
 
         if self.verbose:
-            print(f"ダウンサンプリング: {input_image.shape} -> {downsampled.shape}")
+            print(f"Downsampling: {input_image.shape} -> {downsampled.shape}")
 
-        # 原解像度サイズを事前に取得
+        # Get original resolution size in advance
         target_size = tuple(int(x) for x in input_image.shape[1:])
 
-        # 疎探索用の一時的なパラメータ設定
+        # Temporary parameter setting for sparse search
         original_tile_step_size = self.tile_step_size
         try:
-            self.tile_step_size = 1.0 - self.sparse_overlap  # オーバーラップ率をステップサイズに変換
+            self.tile_step_size = 1.0 - self.sparse_overlap  # Convert overlap rate to step size
 
-            # スライディングウィンドウ推論（疎）
+            # Sliding window inference (sparse)
             # Prefer fp16 compute on CUDA with autocast; logits will be cast to fp32 for softmax later
             if self.device.type == "cuda":
                 downsampled = downsampled.to(device=self.device, dtype=torch.half)
@@ -280,13 +281,13 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
             else:
                 sparse_logits = self.predict_sliding_window_return_logits(downsampled)
         finally:
-            # パラメータを必ず元に戻す
+            # Always restore parameters
             self.tile_step_size = original_tile_step_size
 
-        # ソフトマックスを適用して確率に変換
+        # Apply softmax to convert to probability
         sparse_probs = torch.softmax(sparse_logits, dim=0)
 
-        # 必要に応じて疎探索のコンテキスト情報を作成
+        # Create sparse search context info if necessary
         sparse_context: Optional[Dict[str, Any]] = None
         if return_context:
             seg_lowres = torch.argmax(sparse_probs, dim=0)
@@ -309,19 +310,19 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
             }
             del seg_lowres, seg_highres
 
-        # 背景クラス以外の最大確率を取得（血管領域の検出）
+        # Get max probability of non-background classes (vessel region detection)
         if sparse_probs.shape[0] > 1:
-            vessel_probs = torch.max(sparse_probs[1:], dim=0)[0]  # 背景以外のクラスの最大値
+            vessel_probs = torch.max(sparse_probs[1:], dim=0)[0]  # Max value of non-background classes
         else:
             vessel_probs = sparse_probs[0]
 
-        # 閾値処理でバイナリマスクを作成（GPU上で実施）
-        # メモリ削減のため、まず低解像度（ダウンサンプリング後）のマスクでノイズ除去を行い、
-        # その後に原解像度へアップサンプリングする順序に変更
+        # Create binary mask with thresholding (executed on GPU)
+        # To save memory, first perform denoising on the low-resolution (downsampled) mask,
+        # then change the order to upsample to original resolution
         binary_mask = (vessel_probs > self.detection_threshold).to(dtype=torch.half)
 
-        # ノイズ除去（モルフォロジカルオープニング）: erosion → dilation（GPU近似）
-        # 低解像度のまま実施してメモリ使用量を抑える
+        # Denoising (morphological opening): erosion -> dilation (GPU approximation)
+        # Execute while low-resolution to suppress memory usage
         k_open = int(self.MORPHOLOGY_KERNEL_SIZE)
         if k_open > 1:
             pad_open = k_open // 2
@@ -349,7 +350,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
 
         cleaned_lowres = opened if torch.any(opened > 0.5) else binary_mask
 
-        # 原解像度にアップサンプリング（最近傍）。オープニング後のマスクを使用
+        # Upsample to original resolution (nearest neighbor). Use mask after opening
         if cleaned_lowres.ndim == 3:
             cleaned = torch.nn.functional.interpolate(
                 cleaned_lowres[None, None], size=target_size, mode="nearest"
@@ -361,54 +362,54 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         else:
             raise RuntimeError(f"Unsupported mask ndim: {cleaned_lowres.ndim}")
 
-        # 念のため、0/1へ閾値で再バイナリ化
+        # Re-binarize to 0/1 with threshold just in case
         cleaned = (cleaned > self.BINARY_MASK_THRESHOLD).to(dtype=torch.half)
 
         if self.verbose:
             vessel_ratio = ((cleaned > 0.5).sum() / cleaned.numel()).item()
-            print(f"疎探索完了: 血管領域 {vessel_ratio*100:.1f}%")
+            print(f"Sparse search complete: Vessel region {vessel_ratio*100:.1f}%")
 
-        # 単一BBoxの抽出（空なら全体）
+        # Extract single BBox (whole if empty)
         full_size = torch.tensor(target_size, device=cleaned.device)
-        # 疎探索で得たバイナリマスクからBBoxを作成し、疎探索用マージンを付与
+        # Create BBox from binary mask obtained by sparse search and add sparse search margin
         bbox = self._bbox_from_mask(cleaned > 0.5, int(self.sparse_bbox_margin_voxels), full_size)
         if bbox is None:
             return tuple(slice(0, s) for s in target_size)
         mins = torch.tensor([s.start for s in bbox], device=cleaned.device)
         maxs = torch.tensor([s.stop - 1 for s in bbox], device=cleaned.device)
 
-        # ここから: ROIの上下方向（SI）過大広がりを抑制
-        # - スキャン範囲が肩まで含まれると、誤検出によりROIが縦に伸びすぎ密探索が重くなる
-        # - 上限（mm）を超える場合は、マスクの重心（COM）付近に切り詰める
+        # From here: Suppress excessive ROI vertical (SI) expansion
+        # - If scan range includes shoulders, false detections cause ROI to extend too much vertically, making dense search heavy
+        # - If exceeding limit (mm), trim around mask center of mass (COM)
         if self.limit_si_extent and cleaned.ndim == 3:
-            # spacingの取得（ネットワーク空間）。2D構成の互換は不要（3Dのみ実施）
+            # Get spacing (network space). No need for 2D config compatibility (3D only)
             try:
                 target_spacing = list(self.configuration_manager.spacing)
             except Exception:
                 target_spacing = [1.0, 1.0, 1.0]
-            # 次元数調整（万一長さが合わない場合に先頭へ複製して合わせる）
+            # Dimension adjustment (duplicate to head if length doesn't match)
             while len(target_spacing) < cleaned.ndim:
                 target_spacing = [target_spacing[0]] + target_spacing
 
-            # SI軸の決定
+            # Determine SI axis
             if self.si_axis is not None and 0 <= int(self.si_axis) < cleaned.ndim:
                 si_ax = int(self.si_axis)
             else:
-                # nnU-Net前処理の転置後は、空間軸の先頭（0番目）が基本的にSI軸になる想定
-                # （高解像度＝小spacingの軸は後段に来るため）。spacingの大小には依存しない。
+                # After nnU-Net preprocessing transposition, the first spatial axis (0th) is assumed to be basically the SI axis
+                # (Because high resolution = small spacing axis comes later). Does not depend on spacing magnitude.
                 si_ax = 0
 
-            # 現ROIのSI長（mm）
+            # Current ROI SI length (mm)
             extent_vox = (maxs - mins + 1).to(dtype=torch.int64)
             extent_mm = float(extent_vox[si_ax].item()) * float(target_spacing[si_ax])
 
             if extent_mm > float(self.max_si_extent_mm):
-                # スライスごとの占有率プロファイル（A_z）: SI軸に沿った各スライスのマスク割合（GPU上で計算）
+                # Occupancy profile per slice (A_z): Mask ratio of each slice along SI axis (calculated on GPU)
                 mask_bool = cleaned > 0.5
                 inplane_axes = [ax for ax in range(3) if ax != si_ax]
                 A = mask_bool.float().mean(dim=inplane_axes)  # shape=(Z,)
 
-                # 質量中心（COM）に基づくトリム範囲（mm上限）をGPUで計算
+                # Calculate trim range (mm limit) based on center of mass (COM) on GPU
                 idxs = torch.arange(A.shape[0], device=A.device, dtype=A.dtype)
                 mass = A.sum()
                 if mass > 0:
@@ -423,11 +424,11 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
                 z0 = max(0, z_center - half_extent_vox)
                 z1 = min(int(full_size[si_ax].item()) - 1, z_center + half_extent_vox)
 
-                # 元ROIとの共通部分（過度な切り過ぎ防止のため、まずは交差を取る）
+                # Intersection with original ROI (take intersection first to prevent excessive cutting)
                 new_min_z = max(int(mins[si_ax].item()), z0)
                 new_max_z = min(int(maxs[si_ax].item()), z1)
                 if new_max_z <= new_min_z:
-                    # 交差が極端に小さい場合はCOM中心の範囲を採用
+                    # Adopt COM-centered range if intersection is extremely small
                     new_min_z, new_max_z = z0, z1
 
                 mins = mins.clone()
@@ -438,21 +439,21 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
                 if self.verbose:
                     after_extent_mm = (maxs[si_ax] - mins[si_ax] + 1).item() * float(target_spacing[si_ax])
                     print(
-                        f"SIガード適用: 軸{si_ax}, {extent_mm:.1f}mm -> {after_extent_mm:.1f}mm (上限 {self.max_si_extent_mm}mm)"
+                        f"SI guard applied: Axis{si_ax}, {extent_mm:.1f}mm -> {after_extent_mm:.1f}mm (Limit {self.max_si_extent_mm}mm)"
                     )
 
-        # ここから: ROIの最小長（mm）を保証（BBox確定直前に拡張）
-        # - SI軸は min_si_extent_mm、その他の空間軸は min_xy_extent_mm を最低限確保する
-        # - 可能な限り中心を保つように左右対称に拡張し、画像境界で制限された余りは反対側に配分する
+        # From here: Guarantee ROI minimum length (mm) (expand just before BBox confirmation)
+        # - Ensure minimum min_si_extent_mm for SI axis and min_xy_extent_mm for other spatial axes
+        # - Expand symmetrically to keep center as much as possible, and distribute remainder restricted by image boundary to the opposite side
         try:
             target_spacing_min = list(self.configuration_manager.spacing)
         except Exception:
-            # spacingが取得できない場合は1mm仮定
+            # Assume 1mm if spacing cannot be obtained
             target_spacing_min = [1.0] * cleaned.ndim
         while len(target_spacing_min) < cleaned.ndim:
             target_spacing_min = [target_spacing_min[0]] + target_spacing_min
 
-        # SI軸を再決定（3Dのみ）。2Dの場合は全軸XY扱い
+        # Redetermine SI axis (3D only). Treat all axes as XY for 2D
         if cleaned.ndim == 3:
             if self.si_axis is not None and 0 <= int(self.si_axis) < cleaned.ndim:
                 si_ax_for_min = int(self.si_axis)
@@ -462,41 +463,41 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
             si_ax_for_min = None
 
         for ax in range(cleaned.ndim):
-            # 軸ごとの目標最小長（mm）
+            # Target minimum length per axis (mm)
             min_len_mm = (
                 self.min_si_extent_mm
                 if (si_ax_for_min is not None and ax == si_ax_for_min)
                 else self.min_xy_extent_mm
             )
-            # 必要ボクセル数に変換
+            # Convert to required voxel count
             desired_vox = int(np.ceil(float(min_len_mm) / float(target_spacing_min[ax])))
             current_vox = int((maxs[ax] - mins[ax] + 1).item())
             if desired_vox <= 1 or current_vox >= desired_vox:
                 continue
 
-            # 中心を基準に左右へ拡張
+            # Expand left/right based on center
             need = desired_vox - current_vox
             left = need // 2
             right = need - left
             new_min = int(max(0, int(mins[ax].item()) - left))
             new_max = int(min(int(full_size[ax].item()) - 1, int(maxs[ax].item()) + right))
 
-            # 境界制限により不足した分を反対側に再配分
+            # Redistribute shortage due to boundary restriction to opposite side
             final_extent = new_max - new_min + 1
             if final_extent < desired_vox:
                 remaining = desired_vox - final_extent
-                # 左側に寄せられるだけ寄せる
+                # Shift to left as much as possible
                 shift_left = min(remaining, new_min)
                 new_min = new_min - shift_left
                 remaining -= shift_left
                 if remaining > 0:
-                    # 右側に寄せる
+                    # Shift to right
                     max_allow = int(full_size[ax].item()) - 1
                     available_right = max_allow - new_max
                     shift_right = min(remaining, available_right)
                     new_max = new_max + shift_right
 
-            # 更新
+            # Update
             mins[ax] = int(new_min)
             maxs[ax] = int(new_max)
 
@@ -513,21 +514,21 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         checkpoint_name: str = "checkpoint_final.pth",
         torch_compile: bool = False,
     ) -> None:
-        # Kaggle用: 単一foldのモデルのみを読み込む
+        # For Kaggle: Load only single fold model
         # Args:
-        #     model_training_output_dir: モデルが保存されているディレクトリ
-        #     fold: 使用するfold番号
-        #     checkpoint_name: チェックポイントファイル名
+        #     model_training_output_dir: Directory where model is saved
+        #     fold: Fold number to use
+        #     checkpoint_name: Checkpoint filename
         if fold is None:
             fold = 0
-        print(f"モデルを読み込み中 (fold: {fold})...")
+        print(f"Loading model (fold: {fold})...")
 
-        # データセットとプランをロード
+        # Load dataset and plans
         self.dataset_json = load_json(join(model_training_output_dir, "dataset.json"))
         plans = load_json(join(model_training_output_dir, "plans.json"))
         self.plans_manager = PlansManager(plans)
 
-        # パラメータをロード（単一fold）
+        # Load parameters (single fold)
         checkpoint = torch.load(
             join(model_training_output_dir, f"fold_{fold}", checkpoint_name),
             map_location=torch.device("cpu"),
@@ -535,7 +536,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         )
         trainer_name = checkpoint["trainer_name"]
         configuration_name = checkpoint["init_args"]["configuration"]
-        # 識別名をインスタンスにも保存
+        # Save identifier name to instance as well
         self.trainer_name = str(trainer_name)
         self.configuration_name = str(configuration_name)
         self.allowed_mirroring_axes = checkpoint.get("inference_allowed_mirroring_axes", None)
@@ -543,7 +544,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
 
         self.configuration_manager = self.plans_manager.get_configuration(configuration_name)
 
-        # リサンプリングをtorch gpu実行する
+        # Execute resampling with torch gpu
         self.configuration_manager.configuration["resampling_fn_data"] = "resample_torch_fornnunet"
         self.configuration_manager.configuration["resampling_fn_seg"] = "resample_torch_fornnunet"
         self.configuration_manager.configuration["resampling_fn_probabilities"] = "resample_torch_fornnunet"
@@ -563,10 +564,10 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
             "force_separate_z": None,
         }
 
-        # ラベルマネージャーを初期化
+        # Initialize label manager
         self.label_manager = self.plans_manager.get_label_manager(self.dataset_json)
 
-        # ネットワークを復元
+        # Restore network
         num_input_channels = determine_num_input_channels(
             self.plans_manager, self.configuration_manager, self.dataset_json
         )
@@ -577,7 +578,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         )
 
         if trainer_class is None:
-            raise RuntimeError(f"トレーナークラス '{trainer_name}' が見つかりません")
+            raise RuntimeError(f"Trainer class '{trainer_name}' not found")
 
         self.network = trainer_class.build_network_architecture(
             self.configuration_manager.network_arch_class_name,
@@ -593,25 +594,25 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         if self.device.type == "cuda":
             self.network = self.network.half()
 
-        # ネットワーク重みをロード（半精度GPU最適化済みネットワークに）
+        # Load network weights (into half-precision GPU optimized network)
         self.network.load_state_dict(self.network_weights)
 
         if torch_compile:
-            # nnUNetでは効果小さいが、ローカルでは有効化
-            # Kaggle環境ではエラーになるので無効化
+            # Small effect in nnUNet, but enabled locally
+            # Disabled in Kaggle environment as it causes errors
             self.network = torch.compile(self.network)
 
-        print("モデル読み込み完了: 単一fold")
+        print("Model loading complete: Single fold")
 
     def enable_tensorrt(self, engine_path: str, *, enforce_half_output: bool = True) -> None:
-        # TensorRTエンジンをロードし、推論をTRTに切り替える
+        # Load TensorRT engine and switch inference to TRT
         # Args:
-        #     engine_path: .engineファイルのパス
-        #     enforce_half_output: 出力を半精度へ変換して返す（nnUNet内部の集約dtypeと整合）
-        # 実行デバイスに合わせてエンジンをバインド
+        #     engine_path: Path to .engine file
+        #     enforce_half_output: Return output converted to half precision (consistent with nnUNet internal aggregation dtype)
+        # Bind engine according to execution device
         dev = self.device
         try:
-            # torch.device("cuda") の場合 index が None → current_device を取得
+            # If torch.device("cuda"), index is None -> get current_device
             if dev.type == "cuda" and dev.index is None:
                 dev = torch.device(f"cuda:{torch.cuda.current_device()}")
         except Exception:
@@ -619,23 +620,23 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         self.trt_runner = TRTRunner(engine_path, device=dev)
         self.trt_enforce_half_output = bool(enforce_half_output)
         if self.verbose:
-            print(f"TensorRTエンジンを有効化: {engine_path}")
+            print(f"TensorRT engine enabled: {engine_path}")
 
     @torch.inference_mode()
     def _internal_maybe_mirror_and_predict(self, x: torch.Tensor) -> torch.Tensor:
-        # ミラーリング（TTA）を考慮したネットワーク呼び出しを、TRTが有効なら置き換える
+        # Replace network call considering mirroring (TTA) if TRT is enabled
         if self.trt_runner is None:
-            # 従来のPyTorchパス
+            # Conventional PyTorch path
             return super()._internal_maybe_mirror_and_predict(x)
 
         mirror_axes = self.allowed_mirroring_axes if self.use_mirroring else None
-        # まず素の推論
+        # First, raw inference
         prediction = self.trt_runner.run(x, enforce_half_output=self.trt_enforce_half_output)
 
         if mirror_axes is not None:
-            # xは4D(2D画像)または5D(3D画像)。ミラー軸は空間軸（0始まり）なので、
-            # テンソル次元に合わせて +2 してN,Cをスキップ
-            assert len(x.shape) in (4, 5), "入力テンソルは4Dまたは5Dを想定しています"
+            # x is 4D (2D image) or 5D (3D image). Mirror axes are spatial axes (0-based), so
+            # add +2 to match tensor dimensions and skip N, C
+            assert len(x.shape) in (4, 5), "Input tensor is expected to be 4D or 5D"
             assert max(mirror_axes) <= x.ndim - 3, "mirror_axes does not match the dimension of the input!"
             axes_adj = [m + 2 for m in mirror_axes]
 
@@ -657,14 +658,14 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         properties: dict,
         seg_from_prev_stage: Optional[np.ndarray] = None,
     ) -> Tuple[torch.Tensor, dict]:
-        # データの前処理を実行
+        # Execute data preprocessing
         # Args:
-        #     image: 入力画像
-        #     properties: 画像のプロパティ
-        #     seg_from_prev_stage: 前段階のセグメンテーション
+        #     image: Input image
+        #     properties: Image properties
+        #     seg_from_prev_stage: Segmentation from previous stage
         # Returns:
-        #     data: 前処理済みデータ
-        #     preprocessed: 前処理結果
+        #     data: Preprocessed data
+        #     preprocessed: Preprocessing result
         preprocessor = PreprocessAdapterFromNpy(
             [image],
             [seg_from_prev_stage] if seg_from_prev_stage is not None else None,
@@ -682,27 +683,27 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
         return preprocessed
 
     def _determine_roi_from_sparse_search(self, data: torch.Tensor) -> Optional[Tuple[slice, ...]]:
-        # 疎探索を使用してROIを決定
+        # Determine ROI using sparse search
         # Args:
-        #     data: 入力データ
+        #     data: Input data
         # Returns:
-        #     roi_bbox: ROIのバウンディングボックス（存在しない場合はNone）
+        #     roi_bbox: ROI bounding box (None if not present)
         if not self.should_use_sparse_search(data.shape):
             return None
 
-        # 疎探索を実行し単一のROIを取得
+        # Execute sparse search and get single ROI
         roi_bbox = self.sparse_search(data)
 
         if self.verbose and roi_bbox is not None:
             roi_size = tuple(s.stop - s.start for s in roi_bbox)
-            print(f"ROI決定: サイズ {roi_size}")
+            print(f"ROI determined: Size {roi_size}")
 
         return roi_bbox
 
     def _predict_logits(
         self, data: torch.Tensor, roi_bbox: Optional[Tuple[slice, ...]] = None
     ) -> torch.Tensor:
-        # 単一foldでの推論（ROI指定時はその領域のみ詳細推論）
+        # Inference with single fold (detailed inference only for that region if ROI is specified)
         if roi_bbox is not None:
             results_device = self.device if self.perform_everything_on_device else torch.device("cpu")
             pred_full = torch.zeros(
@@ -712,7 +713,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
             )
             roi_slices = (slice(None),) + roi_bbox
             roi_data = data[roi_slices]
-            # 密探索時もオーバーラップ率からステップサイズへ変換
+            # Convert overlap rate to step size even during dense search
             original_tile_step_size = self.tile_step_size
             try:
                 self.tile_step_size = 1.0 - float(self.dense_overlap)
@@ -742,7 +743,7 @@ class AdaptiveSparsePredictor(nnUNetPredictor):
 
 
 class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
-    """DBSCANによるROI抽出を導入した疎探索推論クラス"""
+    """Sparse search inference class introducing ROI extraction by DBSCAN"""
 
     def __init__(
         self,
@@ -754,10 +755,10 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
         **kwargs,
     ) -> None:
         # Args:
-        #     dbscan_eps_voxels: DBSCANのε（ボクセル単位）
-        #     dbscan_min_samples: コアポイント判定の最小近傍数
-        #     dbscan_max_points: クラスタリング対象とする最大ポイント数
-        #     roi_extent_mm: ROIの物理サイズ(mm)。単一値または軸ごとのシーケンスで指定
+        #     dbscan_eps_voxels: DBSCAN epsilon (in voxels)
+        #     dbscan_min_samples: Minimum neighbors for core point determination
+        #     dbscan_max_points: Maximum points to cluster
+        #     roi_extent_mm: ROI physical size (mm). Specified as single value or sequence per axis
         super().__init__(*args, **kwargs)
         self.dbscan_eps_voxels = float(dbscan_eps_voxels)
         self.dbscan_min_samples = int(dbscan_min_samples)
@@ -769,13 +770,13 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
 
     @staticmethod
     def _dbscan_labels(coords: np.ndarray, eps: float, min_samples: int) -> np.ndarray:
-        """DBSCANでクラスタラベルを取得"""
-        # scikit-learn 未インストール環境では DBSCAN は使用不可。
-        # DBSCAN パスを利用するときにのみ明示的にエラーを投げる。
+        """Get cluster labels with DBSCAN"""
+        # DBSCAN cannot be used in environments where scikit-learn is not installed.
+        # Throw error explicitly only when using DBSCAN path.
         if SklearnDBSCAN is None:  # type: ignore[truthy-function]
             raise ImportError(
-                "scikit-learn が見つかりません。DBSCAN ベースの疎探索を使用しない場合はこのままで問題ありません。"
-                "DBSCAN を使用する場合は scikit-learn をインストールしてください。"
+                "scikit-learn not found. This is fine if not using DBSCAN-based sparse search."
+                "Please install scikit-learn if using DBSCAN."
             )
         if coords.size == 0:
             return np.empty((0,), dtype=np.int32)
@@ -793,9 +794,9 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
         #     return roi_bbox, {}
         # return roi_bbox
 
-        # DBSCANクラスタ重心を用いた固定サイズROI疎探索
+        # Fixed-size ROI sparse search using DBSCAN cluster centroids
         if self.verbose:
-            print("疎探索(DBSCAN)フェーズを開始...")
+            print("Starting sparse search (DBSCAN) phase...")
 
         downscale_factors = [1] + [1 / self.sparse_downscale_factor] * (input_image.ndim - 1)
         downsampled = torch.nn.functional.interpolate(
@@ -806,7 +807,7 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
         ).squeeze(0)
 
         if self.verbose:
-            print(f"ダウンサンプリング: {input_image.shape} -> {downsampled.shape}")
+            print(f"Downsampling: {input_image.shape} -> {downsampled.shape}")
 
         target_size = tuple(int(x) for x in input_image.shape[1:])
         original_tile_step_size = self.tile_step_size
@@ -824,9 +825,9 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
 
         sparse_probs = torch.softmax(sparse_logits, dim=0)
 
-        # SI方向ガード（DBSCAN疎探索内のみ適用）
-        # - SI軸の物理長が他軸より最大かつ max_si_extent_mm を超える場合、
-        #   SI軸の上端側 vox_allow 分のみを保持し、それより下（胸部側）を背景として扱う
+        # SI direction guard (applied only within DBSCAN sparse search)
+        # - If SI axis physical length is largest among axes and exceeds max_si_extent_mm,
+        #   keep only the top vox_allow of the SI axis and treat the rest as background
         if self.si_axis is not None and sparse_probs.dim() >= 2:
             try:
                 si_ax = int(self.si_axis)
@@ -851,7 +852,7 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
                     vox_allow = int(np.ceil(float(self.max_si_extent_mm) / max(1e-6, eff_spacing_lowres)))
                     full_len = int(sparse_probs.shape[1 + si_ax])
                     if 0 < vox_allow < full_len:
-                        # 復元用に元の確率を保持（低解像度）。COM中心の許容窓内は最終的に元へ戻す
+                        # Keep original probability for restoration (low resolution). Restore within COM-centered allowable window eventually
                         sparse_probs_backup = sparse_probs.clone()
                         keep_start = full_len - vox_allow
                         sl = [slice(None)] * sparse_probs.dim()
@@ -860,18 +861,18 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
                         sparse_probs[(0,) + tuple(sl[1:])] = 1.0
                         if self.verbose:
                             print(
-                                f"DBSCAN-sparse SIガード: 軸{si_ax}, 物理長 {si_extent_mm:.1f}mm (最大 {max_extent_mm:.1f}mm) > 上限 {float(self.max_si_extent_mm):.1f}mm\n"
-                                f" -> 低解像度で下側 {keep_start} voxel を背景化"
+                                f"DBSCAN-sparse SI guard: Axis{si_ax}, physical length {si_extent_mm:.1f}mm (max {max_extent_mm:.1f}mm) > limit {float(self.max_si_extent_mm):.1f}mm\n"
+                                f" -> Set lower {keep_start} voxels to background in low resolution"
                             )
 
-                        # 追加の安全策: SI方向の重心を用いた中央ウィンドウでのトリム
-                        # - 重心（COM）を中心に max_si_extent_mm の範囲のみ保持し、それ以外を背景化
+                        # Additional safety measure: Trim with central window using center of mass in SI direction
+                        # - Keep only max_si_extent_mm range around center of mass (COM) and set others to background
                         try:
                             if sparse_probs.shape[0] > 1:
                                 vp = torch.max(sparse_probs[1:], dim=0)[0]
                             else:
                                 vp = sparse_probs[0]
-                            # SI軸以外を総和して1D分布へ
+                            # Sum axes other than SI axis to 1D distribution
                             reduce_axes = tuple(i for i in range(vp.dim()) if i != si_ax)
                             prof = vp.sum(dim=reduce_axes)
                             mass = prof.sum()
@@ -891,7 +892,7 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
                                 z0 = max(0, (full_len // 2) - half_extent)
                                 z1 = min(full_len - 1, z0 + 2 * half_extent)
 
-                            # COM中心ウィンドウ外を背景化（[0:z0) と (z1+1:full_len)）
+                            # Set outside of COM-centered window to background ([0:z0) and (z1+1:full_len))
                             if z0 > 0:
                                 sl_pre = [slice(None)] * sparse_probs.dim()
                                 sl_pre[1 + si_ax] = slice(0, z0)
@@ -903,7 +904,7 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
                                 sparse_probs[(slice(1, None),) + tuple(sl_post[1:])] = 0.0
                                 sparse_probs[(0,) + tuple(sl_post[1:])] = 1.0
 
-                            # COM許容窓 [z0:z1] 内は元の疎探索確率へ復元（先に下側で切られていても復元する）
+                            # Restore original sparse search probability within COM allowable window [z0:z1] (restore even if cut at lower side earlier)
                             restore_sl = [slice(None)] * sparse_probs.dim()
                             restore_sl[1 + si_ax] = slice(z0, z1 + 1)
                             sparse_probs[(slice(None),) + tuple(restore_sl[1:])] = sparse_probs_backup[
@@ -912,10 +913,10 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
 
                             if self.verbose:
                                 print(
-                                    f"DBSCAN-sparse SIガード(重心調整): COM={c_idx}, 範囲[{z0}:{z1}] vox, 半幅 {half_extent}vox — 許容窓を元予測に復元"
+                                    f"DBSCAN-sparse SI guard (COM adjustment): COM={c_idx}, range[{z0}:{z1}] vox, half-width {half_extent}vox — Restore allowable window to original prediction"
                                 )
                         except Exception:
-                            # COM計算に失敗しても推論は継続
+                            # Continue inference even if COM calculation fails
                             pass
 
         sparse_context: Optional[Dict[str, Any]] = None
@@ -1006,15 +1007,15 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
                 return roi_bbox, sparse_context if sparse_context is not None else {}
             return roi_bbox
 
-        # 向き非依存クラスタ選択: 密度・確信度・サイズの順に優先
+        # Orientation-independent cluster selection: Prioritize density, confidence, size in order
         def _cluster_metrics(item: Dict[str, Any]) -> Tuple[float, float, float]:
-            lab = int(item["label"])  # クラスタラベル
+            lab = int(item["label"])  # Cluster label
             member_idx = np.where(labels_np == lab)[0]
             if member_idx.size == 0:
                 return (0.0, 0.0, 0.0)
             pts = coords_np[member_idx]
             vals = values_np[member_idx]
-            # 上位Kの平均確信度（過分散な大クラスタより局所的に濃いクラスタを優先）
+            # Average confidence of top K (prioritize locally dense clusters over over-dispersed large clusters)
             k = int(min(256, vals.shape[0]))
             conf = float(np.mean(np.partition(vals, -k)[-k:])) if k > 0 else 0.0
             size = float(pts.shape[0])
@@ -1079,25 +1080,25 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
             if sparse_context is None:
                 sparse_context = {}
             sparse_context["dbscan_cluster"] = cluster_meta
-            # 選択クラスタ以外の予測をゼロ化（向き非依存）
+            # Zero out predictions other than selected cluster (orientation independent)
             try:
                 best_lab = int(best_cluster.get("label", -1))
-                # 低解像度のクラスタマスクを作成
+                # Create low-resolution cluster mask
                 selected_idx = np.where(labels_np == best_lab)[0]
                 if selected_idx.size > 0:
-                    # マスクはCPUテンソルで保持
+                    # Keep mask as CPU tensor
                     sel_mask_low = torch.zeros(mask_bool_lowres.shape, dtype=torch.bool, device="cpu")
                     sel_coords = coords_cpu[selected_idx].long()
                     if sel_coords.numel() > 0:
                         sel_mask_low[tuple(sel_coords.t())] = True
 
-                    # segmentation_lowres が存在すればゼロ化を適用
+                    # Apply zeroing if segmentation_lowres exists
                     if isinstance(sparse_context.get("segmentation_lowres"), torch.Tensor):
                         seg_lr = sparse_context["segmentation_lowres"].clone()
                         seg_lr[~sel_mask_low] = 0
                         sparse_context["segmentation_lowres"] = seg_lr
 
-                    # 高解像度側のマスクへ最近傍アップサンプリングしてゼロ化
+                    # Nearest neighbor upsampling to high-resolution mask and zeroing
                     if isinstance(sparse_context.get("segmentation_highres"), torch.Tensor):
                         high_shape = tuple(int(x) for x in target_size)
                         sel_mask_high = torch.nn.functional.interpolate(
@@ -1107,7 +1108,7 @@ class DBSCANAdaptiveSparsePredictor(AdaptiveSparsePredictor):
                         seg_hr[~sel_mask_high] = 0
                         sparse_context["segmentation_highres"] = seg_hr
             except Exception:
-                # 失敗しても推論自体は継続
+                # Continue inference even if failed
                 pass
             return roi_bbox, sparse_context
         return roi_bbox

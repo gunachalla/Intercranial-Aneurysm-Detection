@@ -123,12 +123,12 @@ def resample_torch_fornnunet(
         if was_numpy:
             data = torch.from_numpy(data)
 
-        # axisが配列の場合とスカラーの場合の両方を処理
+        # Handle both cases where axis is an array and a scalar
         if hasattr(axis, '__len__'):
             assert len(axis) == 1
             axis = axis[0]
         else:
-            # axisが既にスカラー（numpy.int64など）の場合
+            # If axis is already a scalar (e.g. numpy.int64)
             axis = int(axis)
         tmp = "xyz"
         axis_letter = tmp[axis]

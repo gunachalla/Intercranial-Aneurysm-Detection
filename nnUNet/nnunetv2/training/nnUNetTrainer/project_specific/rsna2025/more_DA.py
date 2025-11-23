@@ -279,7 +279,7 @@ class RSNA2025Trainer_moreDA(nnUNetTrainer_onlyMirror01):
         )
 
         # ------------------------------------------------------------
-        # 以下、デフォルトのデータ拡張にもある項目
+        # Below are items also present in default data augmentation
         # ------------------------------------------------------------
         if use_mask_for_norm is not None and any(use_mask_for_norm):
             transforms.append(
@@ -327,7 +327,7 @@ class RSNA2025Trainer_moreDA(nnUNetTrainer_onlyMirror01):
                 )
             )
 
-        # ここでマスクをヒートマッヒートマップに変換している？
+        # Converting mask to heatmap here?
         # transforms.append(
         #     ConvertSegToRegrTarget(
         #         "EDT", gaussian_sigma=self.min_motor_distance // 3, edt_radius=self.min_motor_distance

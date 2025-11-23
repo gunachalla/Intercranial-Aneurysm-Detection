@@ -1,9 +1,9 @@
 """
-Focal Tversky++ Lossを用いるRSNA2025用トレーナー
+Trainer for RSNA2025 using Focal Tversky++ Loss
 
-参考:
-- ベース: nnUNet/nnunetv2/training/nnUNetTrainer/project_specific/rsna2025/tversky_loss.py
-  - MemoryEfficientTverskyLossに準拠した実装パターン（非線形、バッチ集約、DDP、背景制御、loss_mask）
+Reference:
+- Base: nnUNet/nnunetv2/training/nnUNetTrainer/project_specific/rsna2025/tversky_loss.py
+  - Implementation pattern compliant with MemoryEfficientTverskyLoss (non-linear, batch aggregation, DDP, background control, loss_mask)
 """
 
 from typing import Callable
@@ -26,24 +26,24 @@ from nnunetv2.utilities.helpers import softmax_helper_dim1
 
 class MemoryEfficientFocalTverskyPlusPlusLoss(nn.Module):
     """
-    Focal Tversky++ Loss（メモリ効率版）
+    Focal Tversky++ Loss (Memory Efficient Version)
 
-    Tversky++の定義に基づき、以下を計算します:
+    Based on the definition of Tversky++, calculates the following:
         tp = sum(p * g)
         fp = alpha * sum((p * (1 - g)) ** gamma_pp)
         fn = beta  * sum(((1 - p) * g) ** gamma_pp)
         loss = (1 - (tp + smooth_nr) / (tp + fp + fn + smooth_dr)) ** gamma_focal
 
     Parameters:
-        alpha: 偽陽性の重み
-        beta: 偽陰性の重み
-        gamma_pp: Tversky++の冪指数
-        gamma_focal: Focal化の冪指数
-        smooth_nr/dr: ゼロ割防止の平滑化項
-        apply_nonlin: softmax または sigmoid を想定
-        batch_dice: バッチ全体で集約するか
-        do_bg: 背景チャネルを含めるか
-        ddp: DDP集約を行うか
+        alpha: Weight for false positives
+        beta: Weight for false negatives
+        gamma_pp: Power exponent for Tversky++
+        gamma_focal: Power exponent for Focal
+        smooth_nr/dr: Smoothing term to prevent division by zero
+        apply_nonlin: Assumes softmax or sigmoid
+        batch_dice: Whether to aggregate across the entire batch
+        do_bg: Whether to include background channel
+        ddp: Whether to perform DDP aggregation
     """
 
     def __init__(
@@ -100,7 +100,7 @@ class MemoryEfficientFocalTverskyPlusPlusLoss(nn.Module):
         g0 = y_onehot
         g1 = 1.0 - g0
 
-        # 基本項（冪乗の対象）を先に定義
+        # Define basic terms (targets for exponentiation) first
         base_tp = p0 * g0
         base_fp = p0 * g1
         base_fn = p1 * g0
@@ -110,7 +110,7 @@ class MemoryEfficientFocalTverskyPlusPlusLoss(nn.Module):
             fp = self.alpha * (base_fp**self.gamma_pp).sum(axes)
             fn = self.beta * (base_fn**self.gamma_pp).sum(axes)
         else:
-            # マスクは冪乗の“外側”で適用し、重み付けを線形に保つ
+            # Apply mask "outside" of exponentiation to keep weighting linear
             tp = (base_tp * loss_mask).sum(axes)
             fp = self.alpha * ((base_fp**self.gamma_pp) * loss_mask).sum(axes)
             fn = self.beta * ((base_fn**self.gamma_pp) * loss_mask).sum(axes)
@@ -139,12 +139,12 @@ class MemoryEfficientFocalTverskyPlusPlusLoss(nn.Module):
 
 class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlus(RSNA2025Trainer_moreDAv3):
     """
-    FocalTverskyPlusPlusLossを使用するRSNA2025トレーナー。
+    RSNA2025 trainer using FocalTverskyPlusPlusLoss.
 
-    - regions（マルチラベル）の場合は `sigmoid` を用いる。
-    - multi-class の場合は `softmax` と `to_onehot_y=True` を用い、背景は除外する。
-    - `batch_dice` 設定は FocalTversky++ の `batch` に反映。
-    - 係数はTversky同様に FNをやや重めに: alpha=0.3, beta=0.7。
+    - Uses `sigmoid` for regions (multi-label).
+    - Uses `softmax` and `to_onehot_y=True` for multi-class, excluding background.
+    - `batch_dice` setting is reflected in `batch` of FocalTversky++.
+    - Coefficients are similar to Tversky, weighting FN slightly more: alpha=0.3, beta=0.7.
     """
 
     def _build_loss(self):
@@ -154,7 +154,7 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlus(RSNA2025Trainer_moreDAv3):
         gamma_focal = 4.0 / 3.0  # 1.33...
 
         if self.label_manager.has_regions:
-            # マルチラベル（領域）: sigmoid活性 + 背景込み
+            # Multi-label (regions): sigmoid activation + include background
             loss = MemoryEfficientFocalTverskyPlusPlusLoss(
                 alpha=alpha,
                 beta=beta,
@@ -168,7 +168,7 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlus(RSNA2025Trainer_moreDAv3):
                 ddp=self.is_ddp,
             )
         else:
-            # マルチクラス: softmax活性 + 背景除外
+            # Multi-class: softmax activation + exclude background
             loss = MemoryEfficientFocalTverskyPlusPlusLoss(
                 alpha=alpha,
                 beta=beta,
@@ -182,17 +182,17 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlus(RSNA2025Trainer_moreDAv3):
                 ddp=self.is_ddp,
             )
 
-        # Deep Supervisionに対応
+        # Support Deep Supervision
         if self.enable_deep_supervision:
             deep_supervision_scales = self._get_deep_supervision_scales()
-            # 解像度が低いほど重みを小さく（指数減衰）
+            # Smaller weights for lower resolutions (exponential decay)
             weights = np.array([1 / (2**i) for i in range(len(deep_supervision_scales))])
 
             if self.is_ddp and not self._do_i_compile():
-                # DDP時の特殊ケース: 最終出力に微小重み
+                # Special case for DDP: tiny weight for final output
                 weights[-1] = 1e-6
             else:
-                # 通常は最終出力を無視
+                # Usually ignore final output
                 weights[-1] = 0
 
             weights = weights / weights.sum()
@@ -203,12 +203,12 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlus(RSNA2025Trainer_moreDAv3):
 
 class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusWithBackground(RSNA2025Trainer_moreDAv3):
     """
-    FocalTverskyPlusPlusLossを使用するRSNA2025トレーナー。
+    RSNA2025 trainer using FocalTverskyPlusPlusLoss.
 
-    - regions（マルチラベル）の場合は `sigmoid` を用いる。
-    - multi-class の場合でも背景を含める。
-    - `batch_dice` 設定は FocalTversky++ の `batch` に反映。
-    - 係数はTversky同様に FNをやや重めに: alpha=0.3, beta=0.7。
+    - Uses `sigmoid` for regions (multi-label).
+    - Includes background even for multi-class.
+    - `batch_dice` setting is reflected in `batch` of FocalTversky++.
+    - Coefficients are similar to Tversky, weighting FN slightly more: alpha=0.3, beta=0.7.
     """
 
     def _build_loss(self):
@@ -218,7 +218,7 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusWithBackground(RSNA2025Traine
         gamma_focal = 4.0 / 3.0  # 1.33...
 
         if self.label_manager.has_regions:
-            # マルチラベル（領域）: sigmoid活性 + 背景込み
+            # Multi-label (regions): sigmoid activation + include background
             loss = MemoryEfficientFocalTverskyPlusPlusLoss(
                 alpha=alpha,
                 beta=beta,
@@ -232,7 +232,7 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusWithBackground(RSNA2025Traine
                 ddp=self.is_ddp,
             )
         else:
-            # マルチクラス: softmax活性 + 背景込み
+            # Multi-class: softmax activation + include background
             loss = MemoryEfficientFocalTverskyPlusPlusLoss(
                 alpha=alpha,
                 beta=beta,
@@ -246,17 +246,17 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusWithBackground(RSNA2025Traine
                 ddp=self.is_ddp,
             )
 
-        # Deep Supervisionに対応
+        # Support Deep Supervision
         if self.enable_deep_supervision:
             deep_supervision_scales = self._get_deep_supervision_scales()
-            # 解像度が低いほど重みを小さく（指数減衰）
+            # Smaller weights for lower resolutions (exponential decay)
             weights = np.array([1 / (2**i) for i in range(len(deep_supervision_scales))])
 
             if self.is_ddp and not self._do_i_compile():
-                # DDP時の特殊ケース: 最終出力に微小重み
+                # Special case for DDP: tiny weight for final output
                 weights[-1] = 1e-6
             else:
-                # 通常は最終出力を無視
+                # Usually ignore final output
                 weights[-1] = 0
 
             weights = weights / weights.sum()
@@ -267,10 +267,10 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusWithBackground(RSNA2025Traine
 
 class FocalTverskyPlusPlusCELoss(nn.Module):
     """
-    Focal Tversky++ と Cross Entropy を加重結合した損失。
+    Loss combining Focal Tversky++ and Cross Entropy with weights.
 
-    tversky_loss.py の TverskyPlusCELoss と同様に、ignore_label に応じた loss_mask によって
-    FocalTversky++ 側をマスキングしつつ、CE 側は RobustCrossEntropyLoss に委譲します。
+    Similar to TverskyPlusCELoss in tversky_loss.py, masks the FocalTversky++ side
+    using loss_mask according to ignore_label, while delegating the CE side to RobustCrossEntropyLoss.
     """
 
     def __init__(
@@ -313,16 +313,16 @@ class FocalTverskyPlusPlusCELoss(nn.Module):
 
 class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusPlusCE(RSNA2025Trainer_moreDAv3):
     """
-    Focal Tversky++ と Cross Entropy を組み合わせたトレーナー（moreDAv3）。
+    Trainer combining Focal Tversky++ and Cross Entropy (moreDAv3).
 
-    multi-class 専用（regions=True では BCE を利用すべき）。
+    Dedicated to multi-class (use BCE for regions=True).
     """
 
     def _build_loss(self):
-        # multi-class 専用
+        # Dedicated to multi-class
         assert (
             not self.label_manager.has_regions
-        ), "RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusPlusCEはmulti-class専用です (regionsではBCEをご利用ください)"
+        ), "RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusPlusCE is for multi-class only (please use BCE for regions)"
 
         tverskypp_kwargs = {
             "alpha": 0.3,
@@ -332,7 +332,7 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusPlusCE(RSNA2025Trainer_moreDA
             "batch_dice": self.configuration_manager.batch_dice,
             "smooth_nr": 1e-5,
             "smooth_dr": 1e-5,
-            "do_bg": False,  # multi-classでは背景を除外
+            "do_bg": False,  # Exclude background for multi-class
             "ddp": self.is_ddp,
             "apply_nonlin": softmax_helper_dim1,
         }
@@ -366,16 +366,16 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusPlusCE(RSNA2025Trainer_moreDA
 
 class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusWithBackgroundPlusCE(RSNA2025Trainer_moreDAv3):
     """
-    Focal Tversky++ と Cross Entropy を組み合わせたトレーナー（moreDAv3）。
+    Trainer combining Focal Tversky++ and Cross Entropy (moreDAv3).
 
-    multi-class 専用（regions=True では BCE を利用すべき）。
+    Dedicated to multi-class (use BCE for regions=True).
     """
 
     def _build_loss(self):
-        # multi-class 専用
+        # Dedicated to multi-class
         assert (
             not self.label_manager.has_regions
-        ), "RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusPlusCEはmulti-class専用です (regionsではBCEをご利用ください)"
+        ), "RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusPlusCE is for multi-class only (please use BCE for regions)"
 
         tverskypp_kwargs = {
             "alpha": 0.3,
@@ -385,7 +385,7 @@ class RSNA2025Trainer_moreDAv3_FocalTverskyPlusPlusWithBackgroundPlusCE(RSNA2025
             "batch_dice": self.configuration_manager.batch_dice,
             "smooth_nr": 1e-5,
             "smooth_dr": 1e-5,
-            "do_bg": True,  # multi-classでは背景を除外
+            "do_bg": True,  # Exclude background for multi-class
             "ddp": self.is_ddp,
             "apply_nonlin": softmax_helper_dim1,
         }
